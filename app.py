@@ -71,6 +71,12 @@ except ImportError:
 db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
+# Flask-Login setup
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = 'login'
+
+
 # Models
 class Question(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -111,34 +117,13 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
-# Flask-Login setup
-login_manager = LoginManager()
-login_manager.init_app(app)
-login_manager.login_view = 'login'
 
-# --- New Admin and Student Routes ---
-from flask_login import login_required
 
-@app.route('/admin/questions/edit')
-@login_required
-def admin_questions_edit():
-    if current_user.role != 'admin':
-        abort(403)
-    return render_template('admin_edit_questions.html')
+@app.route('/')
+def index():
+    return redirect(url_for('login'))
 
-@app.route('/admin/questions/view')
-@login_required
-def admin_view_questions():
-    if current_user.role != 'admin':
-        abort(403)
-    return render_template('admin_view_questions.html')
 
-@app.route('/student/results')
-@login_required
-def student_results():
-    if current_user.role != 'student':
-        abort(403)
-    return render_template('student_results.html')
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -147,6 +132,11 @@ def load_user(user_id):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    if current_user.is_authenticated:
+        if current_user.role == 'admin':
+            return redirect(url_for('admin_dashboard'))
+        else:
+            return redirect(url_for('student_dashboard'))
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -170,31 +160,15 @@ def logout():
     flash('Logged out successfully.', 'success')
     return redirect(url_for('login'))
 
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        username = request.form.get('username')
-        email = request.form.get('email', None)  # Make email optional
-        password = request.form.get('password')
-        
-        # Check if username already exists
-        if User.query.filter_by(username=username).first():
-            flash('Username already taken. Please choose a different one.', 'danger')
-            return redirect(url_for('register'))
-            
-        # Check if email is provided and not already in use
-        if email and User.query.filter_by(email=email).first():
-            flash('Email already registered. Please use a different email or leave it blank.', 'danger')
-            return redirect(url_for('register'))
-            
-        user = User(username=username, email=email, name=name, role='student')
-        user.set_password(password)
-        db.session.add(user)
-        db.session.commit()
-        flash('Registration successful! Please log in.', 'success')
-        return redirect(url_for('login'))
-    return render_template('register.html')
+    #Will be future scope. Not now
+    flash('Contact Team Eso Kichu Kori.', 'info')
+    return redirect(url_for('login'))
+
+
+## Dasboards ##
 
 @app.route('/admin/dashboard')
 @login_required
@@ -202,7 +176,12 @@ def admin_dashboard():
     if current_user.role != 'admin':
         flash('Access denied.', 'danger')
         return redirect(url_for('login'))
-    return render_template('admin_dashboard.html')
+    user_count = User.query.count()
+    student_count = User.query.filter((User.role == 'student') | (User.role == 'user')).count()
+    test_count = Test.query.count()
+    print(f"[DEBUG] user_count: {user_count}, test_count: {test_count}")
+    result_count = 0  # Placeholder, update as needed
+    return render_template('admin_dashboard.html', user_count=user_count, student_count=student_count, test_count=test_count, result_count=result_count)
 
 @app.route('/student/dashboard')
 @login_required
@@ -301,6 +280,31 @@ def admin_delete_user(user_id):
     db.session.commit()
     flash('User deleted successfully!', 'success')
     return redirect(url_for('admin_users'))
+
+
+
+@app.route('/admin/questions/edit')
+@login_required
+def admin_questions_edit():
+    if current_user.role != 'admin':
+        abort(403)
+    return render_template('admin_edit_questions.html')
+
+@app.route('/admin/questions/view')
+@login_required
+def admin_view_questions():
+    if current_user.role != 'admin':
+        abort(403)
+    return render_template('admin_view_questions.html')
+
+@app.route('/student/results')
+@login_required
+def student_results():
+    if current_user.role != 'student':
+        abort(403)
+    return render_template('student_results.html')
+
+
 
 class Test(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -614,9 +618,7 @@ def create_app():
     
     return app
 
-@app.route('/')
-def index():
-    return render_template('login.html')
+
 
 if __name__ == '__main__':
     with app.app_context():

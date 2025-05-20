@@ -21,3 +21,112 @@
          - /mnt/c/Users/soumy/git/mcq-platform/templates
        -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/login.html')
 2025-05-21 00:02:39,639 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 00:02:39] "GET /login HTTP/1.1" 200 -
+2025-05-21 02:43:21,978 - app - INFO - Application startup
+2025-05-21 02:43:21,979 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 02:43:21,979 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 02:43:59,171 - app - INFO - Application startup
+2025-05-21 02:43:59,172 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 02:43:59,172 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 02:43:59,180 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.22.140.49:5000
+2025-05-21 02:43:59,181 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-05-21 02:43:59,184 - werkzeug - INFO -  * Restarting with stat
+2025-05-21 02:43:59,858 - app - INFO - Application startup
+2025-05-21 02:43:59,859 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 02:43:59,860 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 02:43:59,866 - werkzeug - WARNING -  * Debugger is active!
+2025-05-21 02:43:59,870 - werkzeug - INFO -  * Debugger PIN: 127-075-730
+2025-05-21 02:44:10,117 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:44:10] "[32mGET / HTTP/1.1[0m" 302 -
+2025-05-21 02:44:10,134 - app - INFO - Locating template 'login.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/login.html')
+2025-05-21 02:44:10,141 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:44:10] "GET /login HTTP/1.1" 200 -
+2025-05-21 02:44:10,468 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:44:10] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-05-21 02:44:22,025 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:44:22] "[32mPOST /login HTTP/1.1[0m" 302 -
+2025-05-21 02:44:22,067 - app - INFO - Locating template 'admin_dashboard.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_dashboard.html')
+2025-05-21 02:44:22,073 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:44:22] "GET /admin/dashboard HTTP/1.1" 200 -
+2025-05-21 02:45:40,848 - werkzeug - INFO -  * Detected change in '/mnt/c/Users/soumy/git/mcq-platform/app.py', reloading
+2025-05-21 02:45:40,967 - werkzeug - INFO -  * Restarting with stat
+2025-05-21 02:45:41,978 - app - INFO - Application startup
+2025-05-21 02:45:41,978 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 02:45:41,979 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 02:45:41,988 - werkzeug - WARNING -  * Debugger is active!
+2025-05-21 02:45:41,990 - werkzeug - INFO -  * Debugger PIN: 127-075-730
+2025-05-21 02:49:18,576 - app - INFO - Locating template 'admin_edit_questions.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_edit_questions.html')
+2025-05-21 02:49:18,603 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:18] "[35m[1mGET /admin/questions/edit HTTP/1.1[0m" 500 -
+2025-05-21 02:49:18,755 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:18] "GET /admin/questions/edit?__debugger__=yes&cmd=resource&f=style.css HTTP/1.1" 200 -
+2025-05-21 02:49:18,764 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:18] "GET /admin/questions/edit?__debugger__=yes&cmd=resource&f=debugger.js HTTP/1.1" 200 -
+2025-05-21 02:49:18,952 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:18] "GET /admin/questions/edit?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1" 200 -
+2025-05-21 02:49:19,118 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:19] "[36mGET /admin/questions/edit?__debugger__=yes&cmd=resource&f=console.png HTTP/1.1[0m" 304 -
+2025-05-21 02:49:21,687 - app - INFO - Locating template 'admin_dashboard.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_dashboard.html')
+2025-05-21 02:49:21,703 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:21] "GET /admin/dashboard HTTP/1.1" 200 -
+2025-05-21 02:49:23,649 - app - INFO - Locating template 'admin_create_test.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_create_test.html')
+2025-05-21 02:49:23,664 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:23] "GET /admin/tests/create HTTP/1.1" 200 -
+2025-05-21 02:49:32,763 - app - INFO - Locating template 'admin_tests.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_tests.html')
+2025-05-21 02:49:32,770 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:32] "GET /admin/tests HTTP/1.1" 200 -
+2025-05-21 02:49:42,729 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:42] "GET /admin/dashboard HTTP/1.1" 200 -
+2025-05-21 02:49:45,084 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:45] "[32mGET / HTTP/1.1[0m" 302 -
+2025-05-21 02:49:45,367 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:45] "[32mGET /login HTTP/1.1[0m" 302 -
+2025-05-21 02:49:45,672 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:45] "GET /admin/dashboard HTTP/1.1" 200 -
+2025-05-21 02:49:52,768 - app - INFO - Locating template 'admin_users.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_users.html')
+2025-05-21 02:49:52,792 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:52] "GET /admin/users HTTP/1.1" 200 -
+2025-05-21 02:49:58,614 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:58] "[32mGET / HTTP/1.1[0m" 302 -
+2025-05-21 02:49:58,899 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:58] "[32mGET /login HTTP/1.1[0m" 302 -
+2025-05-21 02:49:59,210 - app - INFO - Locating template 'admin_dashboard.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/admin_dashboard.html')
+2025-05-21 02:49:59,215 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 02:49:59] "GET /admin/dashboard HTTP/1.1" 200 -
