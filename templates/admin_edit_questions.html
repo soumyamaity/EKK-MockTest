@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Edit Questions - {{ test.subject }} - MCQ Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/marked/marked.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">Eso Kichu Kori</a>
+    <div class="collapse navbar-collapse">
+      <ul class="navbar-nav ms-auto">
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_tests') }}">Manage Tests</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('admin_users') }}">Manage Users</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('logout') }}">Logout</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h2 class="card-title mb-4">Edit Questions - {{ test.subject }}</h2>
+                    
+                    <form method="post" class="mb-4">
+                        <div class="mb-3">
+                            <label for="questions" class="form-label">Questions (Markdown format)</label>
+                            <textarea class="form-control" id="questions" name="questions" rows="20" required>{{ questions }}</textarea>
+                        </div>
+                        <div class="btn-group">
+                            <button type="submit" class="btn btn-success">Save Changes</button>
+                            <a href="{{ url_for('admin_view_questions', test_id=test.test_id) }}" class="btn btn-secondary">Cancel</a>
+                        </div>
+                    </form>
+                    
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title">Preview</h5>
+                            <div id="preview" class="markdown-body"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    // Update preview when questions change
+    const textarea = document.getElementById('questions');
+    const preview = document.getElementById('preview');
+    
+    textarea.addEventListener('input', function() {
+        preview.innerHTML = marked.parse(this.value);
+    });
+    
+    // Initialize preview
+    preview.innerHTML = marked.parse(textarea.value);
+</script>
+</body>
+</html>

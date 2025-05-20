@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+
+{% block title %}Test Results - {{ test.test_id }}{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-10">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h2 class="mb-0">Test Results - {{ test.test_id }}</h2>
+                </div>
+                <div class="card-body">
+                    <div class="text-center mb-4">
+                        <h3>Your Score: {{ "%.1f"|format(score) }}%</h3>
+                        <div class="progress mt-3">
+                            {% set progress_class = 'bg-success' if score >= 70 else 'bg-warning' if score >= 50 else 'bg-danger' %}
+                            <div 
+                                class="progress-bar {{ progress_class }}" 
+                                role="progressbar" 
+                                data-width="{{ score|int }}"
+                                aria-valuenow="{{ score|int }}" 
+                                aria-valuemin="0" 
+                                aria-valuemax="100">
+                                {{ "%.1f"|format(score) }}%
+                            </div>
+                        </div>
+                        <script>
+                            // Set progress bar width after page load
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const progressBar = document.querySelector('.progress-bar');
+                                if (progressBar) {
+                                    const width = progressBar.getAttribute('data-width');
+                                    progressBar.style.width = width + '%';
+                                }
+                            });
+                        </script>
+                        <p class="mt-2">{{ correct_answers }} out of {{ total_questions }} questions correct</p>
+                    </div>
+
+                    <hr>
+
+                    <h4 class="mb-3">Question Review</h4>
+                    <div class="accordion" id="questionsAccordion">
+                        {% for result in results %}
+                        <div class="card mb-2">
+                            <div class="card-header clickable-header {% if result.is_correct %}bg-success text-white{% else %}bg-danger text-white{% endif %}" 
+                                 id="heading{{ loop.index }}" 
+                                 data-toggle="collapse" 
+                                 data-target="#collapse{{ loop.index }}" 
+                                 aria-expanded="false" 
+                                 aria-controls="collapse{{ loop.index }}">
+                                <h5 class="mb-0">
+                                    Question {{ loop.index }}
+                                    <span class="float-right">
+                                        {% if result.is_correct %}
+                                            <i class="fas fa-check"></i>
+                                        {% else %}
+                                            <i class="fas fa-times"></i>
+                                        {% endif %}
+                                    </span>
+                                </h5>
+                            </div>
+                            <div id="collapse{{ loop.index }}" 
+                                 class="collapse" 
+                                 aria-labelledby="heading{{ loop.index }}" 
+                                 data-parent="#questionsAccordion">
+                                <div class="card-body">
+                                    <p><strong>Question:</strong> {{ result.question }}</p>
+                                    <p class="{% if result.is_correct %}text-success{% else %}text-danger{% endif %}">
+                                        <strong>Your Answer:</strong> {{ result.user_answer }}
+                                    </p>
+                                    {% if not result.is_correct %}
+                                    <p class="text-success">
+                                        <strong>Correct Answer:</strong> {{ result.correct_answer }}
+                                    </p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-4 text-center">
+                        <a href="{{ url_for('student_tests') }}" class="btn btn-primary">
+                            <i class="fas fa-arrow-left"></i> Back to Tests
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    // Auto-expand first incorrect question
+    document.addEventListener('DOMContentLoaded', function() {
+        const firstIncorrect = document.querySelector('.card-header.bg-danger');
+        if (firstIncorrect) {
+            const target = firstIncorrect.getAttribute('data-target');
+            const collapse = document.querySelector(target);
+            if (collapse) {
+                new bootstrap.Collapse(collapse, { toggle: true });
+            }
+        }
+    });
+</script>
+{% endblock %}

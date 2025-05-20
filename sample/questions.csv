@@ -1,0 +1,6 @@
+QuestionText,OptionA,OptionB,OptionC,OptionD,CorrectOption,ImageFile,EquationLaTeX
+What is the SI unit of force?,Newton,Joule,Pascal,Watt,A,,
+The acceleration due to gravity on Earth is approximately?,8.9 m/s^2,9.8 m/s^2,10.8 m/s^2,11.8 m/s^2,B,,
+What is the formula for kinetic energy?,mv,1/2 mv^2,mg,mgh,B,,E_k = \\frac{1}{2}mv^2
+Identify the apparatus:,Ammeter,Voltmeter,Galvanometer,Thermometer,C,galvanometer.jpg,
+The value of gravitational constant G is?,6.67e-11 N m^2/kg^2,9.8 N/kg,1.6e-19 C,3e8 m/s,A,,G = 6.67 \\times 10^{-11} \\text{ N m}^2/\\text{kg}^2 
