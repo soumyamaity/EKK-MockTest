@@ -1,0 +1,23 @@
+2025-05-21 00:02:07,335 - app - INFO - Application startup
+2025-05-21 00:02:07,336 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 00:02:07,336 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 00:02:07,346 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://172.22.140.49:5000
+2025-05-21 00:02:07,347 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2025-05-21 00:02:07,348 - werkzeug - INFO -  * Restarting with stat
+2025-05-21 00:02:08,090 - app - INFO - Application startup
+2025-05-21 00:02:08,090 - app - INFO - Database URI: sqlite:///db.sqlite3
+2025-05-21 00:02:08,091 - app - INFO - Upload folder: /mnt/c/Users/soumy/git/mcq-platform/uploads/questions
+2025-05-21 00:02:08,100 - werkzeug - WARNING -  * Debugger is active!
+2025-05-21 00:02:08,101 - werkzeug - INFO -  * Debugger PIN: 127-075-730
+2025-05-21 00:02:39,597 - app - INFO - Locating template 'login.html':
+    1: trying loader of application '__main__'
+       class: jinja2.loaders.FileSystemLoader
+       encoding: 'utf-8'
+       followlinks: False
+       searchpath:
+         - /mnt/c/Users/soumy/git/mcq-platform/templates
+       -> found ('/mnt/c/Users/soumy/git/mcq-platform/templates/login.html')
+2025-05-21 00:02:39,639 - werkzeug - INFO - 127.0.0.1 - - [21/May/2025 00:02:39] "GET /login HTTP/1.1" 200 -

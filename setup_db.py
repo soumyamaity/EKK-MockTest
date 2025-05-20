@@ -22,3 +22,18 @@ with app.app_context():
         print("Admin user created successfully")
     else:
         print("Admin user already exists")
+
+    # Create default student user if not exists
+    student = User.query.filter_by(username='student1').first()
+    if not student:
+        student = User(
+            username='student1',
+            password_hash=generate_password_hash('student123'),
+            role='student',
+            name='Student One'
+        )
+        db.session.add(student)
+        db.session.commit()
+        print("Student user created successfully")
+    else:
+        print("Student user already exists")

@@ -2,41 +2,153 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ test.subject }} - {{ test.test_id }} - Start Test</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .test-info-card {
+            border-left: 4px solid #0d6efd;
+            transition: all 0.3s ease;
+            height: 100%;
+        }
+        .test-info-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        .btn-start-test {
+            padding: 0.75rem 2rem;
+            font-size: 1.1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .btn-start-test:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+        }
+        .instruction-item {
+            position: relative;
+            padding-left: 2rem;
+            margin-bottom: 0.75rem;
+        }
+        .instruction-item i {
+            position: absolute;
+            left: 0;
+            top: 0.2rem;
+            color: #0d6efd;
+        }
+    </style>
 </head>
 <body class="bg-light">
 <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="#">Eso Kichu Kori</a>
-    <div class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="/student/tests">Back to Tests</a></li>
-        <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
-      </ul>
+    <div class="container">
+        <a class="navbar-brand fw-bold" href="{{ url_for('student_dashboard') }}">MCQ Platform</a>
+        <div class="d-flex align-items-center">
+            <span class="text-white me-3 d-none d-md-inline">Welcome, {{ current_user.name }}</span>
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-light btn-sm">
+                <i class="bi bi-box-arrow-right me-1"></i> Logout
+            </a>
+        </div>
     </div>
-  </div>
 </nav>
-<div class="container">
+
+<div class="container py-4">
     <div class="row justify-content-center">
-        <div class="col-md-10">
-            <div class="card shadow-sm">
-                <div class="card-body">
-                    <h2 class="card-title mb-4">{{ test.subject }} ({{ test.test_id }})</h2>
-                    <h5>Questions (Demo Listing)</h5>
-                    <ol>
-                        {% for q in questions %}
-                        <li>{{ q['QuestionText'] }}</li>
-                        {% endfor %}
-                    </ol>
-                    <div class="alert alert-info mt-4">
-                        <strong>Note:</strong> This is a demo listing. The JEE-Main style interface will be implemented next.
+        <div class="col-lg-10">
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-4">
+                        <div>
+                            <h1 class="h3 mb-1">{{ test.subject }}</h1>
+                            <p class="text-muted mb-0">Test ID: {{ test.test_id }}</p>
+                        </div>
+                        <span class="badge bg-primary bg-opacity-10 text-primary fs-6 p-2">
+                            <i class="bi bi-clock me-1"></i> {{ test.time_limit }} minutes
+                        </span>
+                    </div>
+
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-6">
+                            <div class="card test-info-card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title text-primary mb-3">
+                                        <i class="bi bi-info-circle me-2"></i>Test Details
+                                    </h5>
+                                    <ul class="list-unstyled mb-0">
+                                        <li class="mb-2">
+                                            <i class="bi bi-list-ol me-2"></i>
+                                            <strong>Total Questions:</strong> {{ questions|length }}
+                                        </li>
+                                        <li class="mb-2">
+                                            <i class="bi bi-clock me-2"></i>
+                                            <strong>Time Limit:</strong> {{ test.time_limit }} minutes
+                                        </li>
+                                        <li>
+                                            <i class="bi bi-award me-2"></i>
+                                            <strong>Passing Score:</strong> {{ test.passing_score or 'Not specified' }}
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card test-info-card h-100">
+                                <div class="card-body">
+                                    <h5 class="card-title text-primary mb-3">
+                                        <i class="bi bi-journal-text me-2"></i>Test Instructions
+                                    </h5>
+                                    <div class="instruction-list">
+                                        <div class="instruction-item">
+                                            <i class="bi bi-check2-circle"></i>
+                                            <strong>Read each question carefully</strong> before selecting your answer.
+                                        </div>
+                                        <div class="instruction-item">
+                                            <i class="bi bi-arrow-return-right"></i>
+                                            You can navigate between questions using the question palette.
+                                        </div>
+                                        <div class="instruction-item">
+                                            <i class="bi bi-clock-history"></i>
+                                            The test will automatically submit when time is up.
+                                        </div>
+                                        <div class="instruction-item">
+                                            <i class="bi bi-exclamation-triangle"></i>
+                                            Do not refresh the page or press the back button during the test.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-warning">
+                        <h5 class="alert-heading">
+                            <i class="bi bi-exclamation-triangle-fill me-2"></i>Important Notes
+                        </h5>
+                        <hr>
+                        <ul class="mb-0">
+                            <li>Ensure you have a stable internet connection before starting.</li>
+                            <li>All questions are mandatory.</li>
+                            <li>There is no negative marking for incorrect answers.</li>
+                            <li>You cannot pause the test once started.</li>
+                        </ul>
+                    </div>
+
+                    <div class="d-flex flex-column flex-md-row justify-content-between align-items-center mt-5 pt-3 border-top">
+                        <a href="{{ url_for('student_tests') }}" class="btn btn-outline-secondary mb-3 mb-md-0">
+                            <i class="bi bi-arrow-left me-1"></i> Back to Tests
+                        </a>
+                        <form action="{{ url_for('student_jee_test', test_id=test.test_id) }}" method="post">
+                            <button type="submit" class="btn btn-primary btn-start-test">
+                                <i class="bi bi-pencil-square me-2"></i> Start Test
+                            </button>
+                        </form>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
-</html> 
+</html>

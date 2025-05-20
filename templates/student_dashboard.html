@@ -1,37 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Student Dashboard - MCQ Platform</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-<nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="#">Eso Kichu Kori</a>
-    <div class="collapse navbar-collapse">
-      <ul class="navbar-nav ms-auto">
-        <li class="nav-item"><a class="nav-link" href="/test">Take Test</a></li>
-        <li class="nav-item"><a class="nav-link" href="/logout">Logout</a></li>
-      </ul>
-    </div>
-  </div>
-</nav>
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card shadow-sm">
+{% extends 'base.html' %}
+{% block title %}Student Dashboard{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h2 class="mb-4"><i class="bi bi-person-circle me-2"></i>Welcome, {{ current_user.name }}!</h2>
+    <div class="alert alert-info">This is your student dashboard. Here you can view your tests, results, and important updates.</div>
+    <div class="row g-4">
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
                 <div class="card-body">
-                    <h2 class="card-title mb-4">Welcome, {{ current_user.name }} (Student)</h2>
-                    <ul class="list-group">
-                        <li class="list-group-item"><a href="/test">Take Test</a></li>
-                        <li class="list-group-item"><a href="#">View My Results (Coming Soon)</a></li>
-                    </ul>
+                    <h5 class="card-title"><i class="bi bi-journal-text me-2"></i>My Tests</h5>
+                    <a href="{{ url_for('student_tests') }}" class="btn btn-outline-primary">View Available Tests</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-bar-chart-line me-2"></i>My Results</h5>
+                    <a href="{{ url_for('student_results') }}" class="btn btn-outline-success">View Results</a>
                 </div>
             </div>
         </div>
     </div>
+    <div class="mt-4 text-muted">More features coming soon. Good luck with your tests!</div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html> 
+{% endblock %}

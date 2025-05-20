@@ -1,23 +1,75 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, abort
+from flask import Flask, render_template, request, redirect, url_for, flash, abort, session, send_file, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
-import os
-import pandas as pd
-import io
-import csv
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
-from flask import session
-from datetime import datetime
+from werkzeug.utils import secure_filename
+from datetime import datetime, timedelta
+import os
+import re
 import zipfile
-import openpyxl
-import math
+import tempfile
+import shutil
+
+# Helper function to parse questions from markdown
+def parse_markdown_questions(content):
+    questions = []
+    # Split by question blocks (assuming questions are separated by ---)
+    blocks = re.split(r'\n---+\n', content)
+    
+    for block in blocks:
+        if not block.strip():
+            continue
+            
+        question = {}
+        lines = [line.strip() for line in block.split('\n') if line.strip()]
+        
+        # Extract question text (lines starting with Q: or first line)
+        question_text = []
+        options = {}
+        correct_option = None
+        
+        for line in lines:
+            if line.lower().startswith('q:'):
+                question_text.append(line[2:].strip())
+            elif line.lower().startswith(('a:', 'b:', 'c:', 'd:')):
+                option = line[0].upper()
+                options[option] = line[2:].strip()
+            elif line.lower().startswith('answer:'):
+                correct_option = line.split(':', 1)[1].strip().upper()
+            else:
+                question_text.append(line)
+        
+        if question_text and options and correct_option in options:
+            questions.append({
+                'text': '\n'.join(question_text),
+                'option_a': options.get('A', ''),
+                'option_b': options.get('B', ''),
+                'option_c': options.get('C', ''),
+                'option_d': options.get('D', ''),
+                'correct_option': correct_option
+            })
+    
+    return questions
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
 app.config['UPLOAD_FOLDER'] = 'uploads/questions'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['EXPLAIN_TEMPLATE_LOADING'] = True
+
+# Enable debug toolbar if installed
+try:
+    from flask_debugtoolbar import DebugToolbarExtension
+    app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = False
+    toolbar = DebugToolbarExtension(app)
+except ImportError:
+    pass  # Debug toolbar not installed, continue without it
 
 db = SQLAlchemy(app)
+migrate = Migrate(app, db)
 
 # Models
 class Question(db.Model):
@@ -47,9 +99,10 @@ class Response(db.Model):
 # User model for authentication
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
+    username = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)  # Making email optional
     password_hash = db.Column(db.String(128), nullable=False)
-    role = db.Column(db.String(10), nullable=False)  # 'admin' or 'student'
+    role = db.Column(db.String(10), nullable=False, default='student')  # 'admin' or 'student'
     name = db.Column(db.String(100), nullable=False)
 
     def set_password(self, password):
@@ -63,132 +116,42 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# --- New Admin and Student Routes ---
+from flask_login import login_required
+
+@app.route('/admin/questions/edit')
+@login_required
+def admin_questions_edit():
+    if current_user.role != 'admin':
+        abort(403)
+    return render_template('admin_edit_questions.html')
+
+@app.route('/admin/questions/view')
+@login_required
+def admin_view_questions():
+    if current_user.role != 'admin':
+        abort(403)
+    return render_template('admin_view_questions.html')
+
+@app.route('/student/results')
+@login_required
+def student_results():
+    if current_user.role != 'student':
+        abort(403)
+    return render_template('student_results.html')
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# Admin: Upload questions and model answers
-@app.route('/admin/upload', methods=['GET', 'POST'])
-def admin_upload():
-    if request.method == 'POST':
-        file = request.files.get('file')
-        if not file:
-            flash('No file selected', 'error')
-            return redirect(request.url)
-        try:
-            filename = file.filename
-            if filename.endswith('.csv'):
-                df = pd.read_csv(file)
-            elif filename.endswith('.xlsx') or filename.endswith('.xls'):
-                df = pd.read_excel(file)
-            else:
-                flash('Unsupported file type. Please upload a CSV or Excel file.', 'error')
-                return redirect(request.url)
-            required_cols = ['Question', 'Option A', 'Option B', 'Option C', 'Option D', 'Correct Option']
-            if not all(col in df.columns for col in required_cols):
-                flash('Missing required columns in file.', 'error')
-                return redirect(request.url)
-            # Clear existing questions
-            Question.query.delete()
-            db.session.commit()
-            # Add questions
-            for _, row in df.iterrows():
-                q = Question(
-                    text=row['Question'],
-                    option_a=row['Option A'],
-                    option_b=row['Option B'],
-                    option_c=row['Option C'],
-                    option_d=row['Option D'],
-                    correct_option=row['Correct Option'].strip().upper()
-                )
-                db.session.add(q)
-            db.session.commit()
-            flash('Questions uploaded successfully!', 'success')
-            return redirect(request.url)
-        except Exception as e:
-            flash(f'Error processing file: {e}', 'error')
-            return redirect(request.url)
-    return render_template('admin_upload.html')
-
-# Student: Take the test
-@app.route('/test', methods=['GET', 'POST'])
-def student_test():
-    if request.method == 'POST':
-        name = request.form.get('name')
-        email = request.form.get('email') or None
-        if not name:
-            flash('Name is required.', 'error')
-            return redirect(request.url)
-        # Check if student already exists
-        student = Student.query.filter_by(email=email).first() if email else None
-        if not student:
-            student = Student(name=name, email=email)
-            db.session.add(student)
-            db.session.commit()
-        # Prevent multiple attempts (optional)
-        if Response.query.filter_by(student_id=student.id).first():
-            flash('You have already taken the test.', 'error')
-            return redirect(request.url)
-        questions = Question.query.all()
-        score = 0
-        for q in questions:
-            selected = request.form.get(f'q_{q.id}')
-            is_correct = selected == q.correct_option
-            if is_correct:
-                score += 1
-            response = Response(
-                student_id=student.id,
-                question_id=q.id,
-                selected_option=selected,
-                is_correct=is_correct
-            )
-            db.session.add(response)
-        db.session.commit()
-        return render_template('student_test.html', submitted=True, score=score, total=len(questions))
-    else:
-        questions = Question.query.all()
-        return render_template('student_test.html', questions=questions, submitted=False)
-
-# Admin: View results
-@app.route('/admin/results')
-def view_results():
-    students = Student.query.all()
-    results = []
-    for student in students:
-        responses = Response.query.filter_by(student_id=student.id).all()
-        score = sum(1 for r in responses if r.is_correct)
-        results.append({
-            'name': student.name,
-            'email': student.email,
-            'score': score,
-            'total': len(responses)
-        })
-    return render_template('results.html', results=results)
-
-@app.route('/admin/results/download')
-def download_results():
-    students = Student.query.all()
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['Name', 'Email', 'Score', 'Total Answered'])
-    for student in students:
-        responses = Response.query.filter_by(student_id=student.id).all()
-        score = sum(1 for r in responses if r.is_correct)
-        writer.writerow([student.name, student.email or '', score, len(responses)])
-    output.seek(0)
-    return send_file(
-        io.BytesIO(output.getvalue().encode()),
-        mimetype='text/csv',
-        as_attachment=True,
-        download_name='results.csv'
-    )
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        email = request.form.get('email')
+        username = request.form.get('username')
         password = request.form.get('password')
-        user = User.query.filter_by(email=email).first()
+        # Try to find user by username or email
+        user = User.query.filter((User.username == username) | (User.email == username)).first()
         if user and user.check_password(password):
             login_user(user)
             flash('Logged in successfully!', 'success')
@@ -197,7 +160,7 @@ def login():
             else:
                 return redirect(url_for('student_dashboard'))
         else:
-            flash('Invalid email or password.', 'danger')
+            flash('Invalid username/email or password.', 'danger')
     return render_template('login.html')
 
 @app.route('/logout')
@@ -211,12 +174,21 @@ def logout():
 def register():
     if request.method == 'POST':
         name = request.form.get('name')
-        email = request.form.get('email')
+        username = request.form.get('username')
+        email = request.form.get('email', None)  # Make email optional
         password = request.form.get('password')
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'danger')
+        
+        # Check if username already exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken. Please choose a different one.', 'danger')
             return redirect(url_for('register'))
-        user = User(email=email, name=name, role='student')
+            
+        # Check if email is provided and not already in use
+        if email and User.query.filter_by(email=email).first():
+            flash('Email already registered. Please use a different email or leave it blank.', 'danger')
+            return redirect(url_for('register'))
+            
+        user = User(username=username, email=email, name=name, role='student')
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -235,6 +207,7 @@ def admin_dashboard():
 @app.route('/student/dashboard')
 @login_required
 def student_dashboard():
+    print(f"[DEBUG] User: {getattr(current_user, 'username', None)}, Role: {getattr(current_user, 'role', None)}, Authenticated: {getattr(current_user, 'is_authenticated', None)}")
     if current_user.role != 'student':
         flash('Access denied.', 'danger')
         return redirect(url_for('login'))
@@ -255,13 +228,22 @@ def admin_add_user():
         abort(403)
     if request.method == 'POST':
         name = request.form.get('name')
-        email = request.form.get('email')
+        username = request.form.get('username')
+        email = request.form.get('email', None)  # Make email optional
         password = request.form.get('password')
         role = request.form.get('role')
-        if User.query.filter_by(email=email).first():
-            flash('Email already registered.', 'danger')
+        
+        # Check if username already exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken. Please choose a different one.', 'danger')
             return redirect(url_for('admin_add_user'))
-        user = User(email=email, name=name, role=role)
+            
+        # Check if email is provided and not already in use
+        if email and User.query.filter_by(email=email).first():
+            flash('Email already registered. Please use a different email or leave it blank.', 'danger')
+            return redirect(url_for('admin_add_user'))
+            
+        user = User(username=username, email=email, name=name, role=role)
         user.set_password(password)
         db.session.add(user)
         db.session.commit()
@@ -276,13 +258,31 @@ def admin_edit_user(user_id):
         abort(403)
     user = User.query.get_or_404(user_id)
     if request.method == 'POST':
+        # Get form data
+        username = request.form.get('username')
+        email = request.form.get('email', None)  # Make email optional
+        
+        # Check if username is being changed and if it's already taken
+        if username != user.username and User.query.filter_by(username=username).first():
+            flash('Username already taken. Please choose a different one.', 'danger')
+            return redirect(url_for('admin_edit_user', user_id=user_id))
+            
+        # Check if email is being changed and if it's already in use (if provided)
+        if email and email != user.email and User.query.filter_by(email=email).first():
+            flash('Email already in use. Please use a different email or leave it blank.', 'danger')
+            return redirect(url_for('admin_edit_user', user_id=user_id))
+        
+        # Update user data
         user.name = request.form.get('name')
-        user.email = request.form.get('email')
-        role = request.form.get('role')
-        user.role = role
+        user.username = username
+        user.email = email if email else None
+        user.role = request.form.get('role')
+        
+        # Update password if provided
         password = request.form.get('password')
         if password:
             user.set_password(password)
+            
         db.session.commit()
         flash('User updated successfully!', 'success')
         return redirect(url_for('admin_users'))
@@ -308,8 +308,21 @@ class Test(db.Model):
     test_id = db.Column(db.String(50), unique=True, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    filename = db.Column(db.String(200), nullable=False)  # uploaded ZIP filename
+    filename = db.Column(db.String(200), nullable=False)  # uploaded Markdown filename
+    time_limit = db.Column(db.Integer, default=60)  # Time limit in minutes
     admin = db.relationship('User', backref=db.backref('tests', lazy=True))
+
+class StudentResponse(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    test_id = db.Column(db.Integer, db.ForeignKey('test.id'), nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    total_questions = db.Column(db.Integer, nullable=False)
+    time_taken = db.Column(db.Integer, nullable=False)  # in seconds
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    student = db.relationship('User', backref=db.backref('test_responses', lazy=True))
+    test = db.relationship('Test', backref=db.backref('responses', lazy=True))
 
 @app.route('/admin/tests')
 @login_required
@@ -327,23 +340,68 @@ def admin_create_test():
     if request.method == 'POST':
         subject = request.form.get('subject')
         test_id = request.form.get('test_id')
+        time_limit = int(request.form.get('time_limit', 60))
         file = request.files.get('file')
-        if not subject or not test_id or not file:
+        
+        if not all([subject, test_id, file]):
             flash('All fields are required.', 'danger')
             return redirect(url_for('admin_create_test'))
-        if not file.filename.endswith('.zip'):
-            flash('Please upload a ZIP file.', 'danger')
+            
+        if not (file.filename.endswith('.md') or file.filename.endswith('.zip')):
+            flash('Please upload a Markdown (.md) or ZIP file containing Markdown.', 'danger')
             return redirect(url_for('admin_create_test'))
-        # Save ZIP file
-        zip_filename = f"{test_id}_{file.filename}"
-        zip_path = os.path.join(app.config['UPLOAD_FOLDER'], zip_filename)
-        file.save(zip_path)
-        # Optionally extract and parse here
-        test = Test(subject=subject, test_id=test_id, created_by=current_user.id, filename=zip_filename)
-        db.session.add(test)
-        db.session.commit()
-        flash('Test created and question paper uploaded!', 'success')
-        return redirect(url_for('admin_tests'))
+            
+        try:
+            # Create uploads directory if it doesn't exist
+            os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+            
+            # Save the file
+            filename = f"{test_id}_{secure_filename(file.filename)}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # If it's a ZIP file, extract and find the first .md file
+            if filename.endswith('.zip'):
+                with zipfile.ZipFile(filepath, 'r') as zip_ref:
+                    # Extract to a temp directory
+                    temp_dir = tempfile.mkdtemp()
+                    zip_ref.extractall(temp_dir)
+                    
+                    # Find the first .md file
+                    for root, _, files in os.walk(temp_dir):
+                        for f in files:
+                            if f.endswith('.md'):
+                                # Move the .md file to the uploads folder
+                                src_path = os.path.join(root, f)
+                                dest_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
+                                shutil.move(src_path, dest_path)
+                                filename = f
+                                break
+                        if filename != file.filename:  # If we found and moved an .md file
+                            break
+                    
+                    # Clean up temp directory and zip file
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    os.remove(filepath)
+            
+            # Create test record
+            test = Test(
+                subject=subject, 
+                test_id=test_id, 
+                created_by=current_user.id, 
+                filename=filename,
+                time_limit=time_limit
+            )
+            db.session.add(test)
+            db.session.commit()
+            
+            flash('Test created and question paper uploaded!', 'success')
+            return redirect(url_for('admin_tests'))
+            
+        except Exception as e:
+            flash(f'Error processing file: {str(e)}', 'error')
+            return redirect(url_for('admin_create_test'))
+            
     return render_template('admin_create_test.html')
 
 @app.route('/admin/tests/delete/<int:test_id>', methods=['POST'])
@@ -376,88 +434,197 @@ def student_start_test(test_id):
     if current_user.role != 'student':
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
-    # Parse the Excel file from the ZIP (for demo, just list questions)
-    zip_path = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
-    questions = []
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        excel_file = None
-        for name in zip_ref.namelist():
-            if name.endswith('.xlsx') or name.endswith('.xls'):
-                excel_file = name
-                break
-        if excel_file:
-            with zip_ref.open(excel_file) as f:
-                wb = openpyxl.load_workbook(f)
-                ws = wb.active
-                headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    q = dict(zip(headers, row))
-                    questions.append(q)
-    return render_template('student_test_start.html', test=test, questions=questions)
+    
+    # Read and parse the markdown file
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
+    
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+        questions = parse_markdown_questions(content)
+        
+        # Store questions in session for the test
+        session['test_questions'] = questions
+        session['test_id'] = test_id
+        
+        return render_template('student_test_start.html', 
+                             test=test, 
+                             questions=questions,
+                             time_limit=test.time_limit)
+    except Exception as e:
+        flash(f'Error loading test: {str(e)}', 'error')
+        return redirect(url_for('student_tests'))
 
 @app.route('/student/test/<test_id>/jee', methods=['GET', 'POST'])
 @login_required
 def student_jee_test(test_id):
     if current_user.role != 'student':
         abort(403)
+        
     test = Test.query.filter_by(test_id=test_id).first_or_404()
-    zip_path = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
-    # Parse questions from Excel in ZIP
-    questions = []
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-        excel_file = None
-        for name in zip_ref.namelist():
-            if name.endswith('.xlsx') or name.endswith('.xls'):
-                excel_file = name
-                break
-        if excel_file:
-            with zip_ref.open(excel_file) as f:
-                wb = openpyxl.load_workbook(f)
-                ws = wb.active
-                headers = [cell.value for cell in next(ws.iter_rows(min_row=1, max_row=1))]
-                for row in ws.iter_rows(min_row=2, values_only=True):
-                    q = dict(zip(headers, row))
-                    questions.append(q)
+    
+    # Get questions from session or load from file
+    if 'test_questions' not in session or session.get('test_id') != test_id:
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+            questions = parse_markdown_questions(content)
+            session['test_questions'] = questions
+            session['test_id'] = test_id
+        except Exception as e:
+            flash(f'Error loading test: {str(e)}', 'error')
+            return redirect(url_for('student_tests'))
+    else:
+        questions = session['test_questions']
+    
     num_questions = len(questions)
-    # State: current question index, answers, review status
-    if 'jee_state' not in session or session.get('jee_test_id') != test_id:
-        session['jee_state'] = {
+    
+    # Initialize test state if not exists or if it's a different test
+    if 'test_state' not in session or session.get('test_state', {}).get('test_id') != test_id:
+        session['test_state'] = {
+            'test_id': test_id,
             'current': 0,
             'answers': [None] * num_questions,
             'review': [False] * num_questions,
             'visited': [False] * num_questions,
-            'start_time': math.floor(session.get('jee_start_time', 0) or 0),
+            'start_time': int(datetime.utcnow().timestamp()),
+            'time_limit': test.time_limit * 60  # Convert minutes to seconds
         }
-        session['jee_test_id'] = test_id
-        session['jee_start_time'] = math.floor(session.get('jee_start_time', 0) or 0)
-    state = session['jee_state']
+    
+    state = session['test_state']
+    
+    # Handle form submission
     if request.method == 'POST':
         action = request.form.get('action')
-        q_idx = int(request.form.get('q_idx'))
+        q_idx = int(request.form.get('q_idx', 0))
         selected = request.form.get('selected')
+        
         # Save answer if selected
-        if selected:
+        if selected is not None:
             state['answers'][q_idx] = selected
+        
         state['visited'][q_idx] = True
-        # Mark for review
+        
+        # Handle different actions
         if action == 'mark_review':
             state['review'][q_idx] = True
         elif action == 'save_next':
             state['review'][q_idx] = False
-            state['current'] = min(q_idx + 1, num_questions - 1)
+            if q_idx < num_questions - 1:
+                state['current'] = q_idx + 1
         elif action == 'clear':
             state['answers'][q_idx] = None
             state['review'][q_idx] = False
         elif action == 'goto':
-            goto_idx = int(request.form.get('goto_idx'))
-            state['current'] = goto_idx
+            goto_idx = int(request.form.get('goto_idx', q_idx))
+            if 0 <= goto_idx < num_questions:
+                state['current'] = goto_idx
         elif action == 'submit':
-            # TODO: Save responses to DB, calculate score, clear session
-            return redirect(url_for('student_dashboard'))
-        session['jee_state'] = state
+            # Calculate score
+            score = 0
+            for i, q in enumerate(questions):
+                if state['answers'][i] and q['correct_option'] == state['answers'][i]:
+                    score += 1
+            
+            # Save results to database
+            try:
+                student_response = StudentResponse(
+                    student_id=current_user.id,
+                    test_id=test.id,
+                    score=score,
+                    total_questions=num_questions,
+                    time_taken=int(datetime.utcnow().timestamp()) - state['start_time']
+                )
+                db.session.add(student_response)
+                db.session.commit()
+                
+                # Clear test state
+                session.pop('test_state', None)
+                session.pop('test_questions', None)
+                
+                flash(f'Test submitted! Your score: {score}/{num_questions}', 'success')
+                return redirect(url_for('student_test_result', test_id=test.id, response_id=student_response.id))
+            except Exception as e:
+                db.session.rollback()
+                flash('Error saving your test results. Please try again.', 'error')
+        
+        # Save updated state
+        session['test_state'] = state
+    
+    # Calculate remaining time
+    elapsed = int(datetime.utcnow().timestamp()) - state['start_time']
+    remaining = max(0, state['time_limit'] - elapsed)
+    
+    # If time's up, auto-submit
+    if remaining <= 0:
+        flash('Time\'s up! Your test has been auto-submitted.', 'warning')
+        return redirect(url_for('student_tests'))
+    
     q_idx = state['current']
-    return render_template('student_jee_test.html', test=test, questions=questions, q_idx=q_idx, state=state, enumerate=enumerate, len=len)
+    
+    return render_template(
+        'student_jee_test.html', 
+        test=test, 
+        questions=questions, 
+        q_idx=q_idx, 
+        state=state,
+        remaining_time=remaining,
+        enumerate=enumerate, 
+        len=len
+    )
+
+@app.route('/student/test/<int:test_id>/result/<int:response_id>')
+@login_required
+def student_test_result(test_id, response_id):
+    if current_user.role != 'student' or (current_user.role == 'student' and current_user.id != StudentResponse.query.get(response_id).student_id):
+        abort(403)
+    
+    response = StudentResponse.query.get_or_404(response_id)
+    test = Test.query.get_or_404(test_id)
+    
+    # Format time taken
+    time_taken = str(timedelta(seconds=response.time_taken))
+    
+    return render_template('student_test_result.html', 
+                         test=test, 
+                         response=response,
+                         time_taken=time_taken,
+                         percentage=round((response.score / response.total_questions) * 100, 2))
+
+def create_app():
+    # Ensure upload directory exists
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    
+    # Configure logging
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler('app.log')
+        ]
+    )
+    
+    # Log configuration
+    app.logger.info('Application startup')
+    app.logger.info(f'Database URI: {app.config["SQLALCHEMY_DATABASE_URI"]}')
+    app.logger.info(f'Upload folder: {os.path.abspath(app.config["UPLOAD_FOLDER"])}')
+    
+    return app
+
+@app.route('/')
+def index():
+    return render_template('login.html')
 
 if __name__ == '__main__':
-    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-    app.run(debug=True) 
+    with app.app_context():
+        db.create_all()
+    
+    try:
+        app = create_app()
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    except Exception as e:
+        app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
+        raise 
