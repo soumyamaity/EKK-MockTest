@@ -3,6 +3,8 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from flask_migrate import Migrate
 from werkzeug.security import generate_password_hash, check_password_hash
+import markdown
+import os
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 import os
@@ -102,6 +104,28 @@ class Response(db.Model):
     student = db.relationship('Student', backref=db.backref('responses', lazy=True))
     question = db.relationship('Question', backref=db.backref('responses', lazy=True))
 
+class Test(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    subject = db.Column(db.String(100), nullable=False)
+    test_id = db.Column(db.String(50), unique=True, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    filename = db.Column(db.String(200), nullable=False)  # uploaded Markdown filename
+    time_limit = db.Column(db.Integer, default=60)  # Time limit in minutes
+    admin = db.relationship('User', backref=db.backref('tests', lazy=True))
+
+class StudentResponse(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    test_id = db.Column(db.Integer, db.ForeignKey('test.id'), nullable=False)
+    score = db.Column(db.Integer, nullable=False)
+    total_questions = db.Column(db.Integer, nullable=False)
+    time_taken = db.Column(db.Integer, nullable=False)  # in seconds
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    student = db.relationship('User', backref=db.backref('test_responses', lazy=True))
+    test = db.relationship('Test', backref=db.backref('responses', lazy=True))
+
 # User model for authentication
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -119,10 +143,10 @@ class User(UserMixin, db.Model):
 
 
 
+
 @app.route('/')
 def index():
     return redirect(url_for('login'))
-
 
 
 @login_manager.user_loader
@@ -177,11 +201,12 @@ def admin_dashboard():
         flash('Access denied.', 'danger')
         return redirect(url_for('login'))
     user_count = User.query.count()
-    student_count = User.query.filter((User.role == 'student') | (User.role == 'user')).count()
+    student_count = User.query.filter((User.role == 'student')).count()
     test_count = Test.query.count()
-    print(f"[DEBUG] user_count: {user_count}, test_count: {test_count}")
+    #print(f"[DEBUG] user_count: {user_count}, test_count: {test_count}")
     result_count = 0  # Placeholder, update as needed
-    return render_template('admin_dashboard.html', user_count=user_count, student_count=student_count, test_count=test_count, result_count=result_count)
+    #user_count purposefully kept as, user_count = student_count (do not change)
+    return render_template('admin_dashboard.html', user_count=user_count - student_count, test_count=test_count, result_count=result_count)
 
 @app.route('/student/dashboard')
 @login_required
@@ -191,6 +216,9 @@ def student_dashboard():
         flash('Access denied.', 'danger')
         return redirect(url_for('login'))
     return render_template('student_dashboard.html')
+
+
+#admin routes #
 
 @app.route('/admin/users')
 @login_required
@@ -281,8 +309,6 @@ def admin_delete_user(user_id):
     flash('User deleted successfully!', 'success')
     return redirect(url_for('admin_users'))
 
-
-
 @app.route('/admin/questions/edit/<test_id>')
 @login_required
 def admin_questions_edit(test_id):
@@ -297,47 +323,52 @@ def admin_view_questions(test_id):
     if current_user.role != 'admin':
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
-    return render_template('admin_view_questions.html', test=test)
-
-
-
-
-
-class Test(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    subject = db.Column(db.String(100), nullable=False)
-    test_id = db.Column(db.String(50), unique=True, nullable=False)
-    created_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    filename = db.Column(db.String(200), nullable=False)  # uploaded Markdown filename
-    time_limit = db.Column(db.Integer, default=60)  # Time limit in minutes
-    admin = db.relationship('User', backref=db.backref('tests', lazy=True))
-
-class StudentResponse(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    test_id = db.Column(db.Integer, db.ForeignKey('test.id'), nullable=False)
-    score = db.Column(db.Integer, nullable=False)
-    total_questions = db.Column(db.Integer, nullable=False)
-    time_taken = db.Column(db.Integer, nullable=False)  # in seconds
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow)
     
-    student = db.relationship('User', backref=db.backref('test_responses', lazy=True))
-    test = db.relationship('Test', backref=db.backref('responses', lazy=True))
+    # Read and render the markdown file
+    file_path = os.path.join(app.config['UPLOAD_FOLDER'], test.test_id, 'questions.md')
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            markdown_content = f.read()
+        # Convert markdown to HTML
+        html_content = markdown.markdown(markdown_content, extensions=['tables', 'fenced_code'])
+    except FileNotFoundError:
+        html_content = "<div class='alert alert-warning'>No questions found for this test.</div>"
+    
+    return render_template('admin_view_questions.html', 
+                         test=test, 
+                         questions=html_content)
 
-@app.route('/admin/tests')
+
+@app.route('/admin/test')
 @login_required
-def admin_tests():
+def redirect_to_tests():
+    """Redirect /admin/test to /admin/tests"""
+    return redirect(url_for('admin_tests'))
+
+@app.route('/admin/route')
+@login_required
+def redirect_to_dashboard():
+    """Redirect /admin/route to /admin/dashboard"""
     if current_user.role != 'admin':
         abort(403)
-    tests = Test.query.order_by(Test.created_at.desc()).all()
-    return render_template('admin_tests.html', tests=tests)
+    return redirect(url_for('admin_dashboard'))
 
-@app.route('/admin/tests/create', methods=['GET', 'POST'])
+
+@app.route('/admin/test')
+@login_required
+def redirect_to_tests():
+    """Redirect /admin/test to /admin/tests"""
+    return redirect(url_for('admin_tests'))
+
+@app.route('/admin/route')
+@login_required
+def redirect_to_dashboard():
+    """Re@app.route('/admin/tests/create', methods=['GET', 'POST'])
 @login_required
 def admin_create_test():
     if current_user.role != 'admin':
         abort(403)
+    
     if request.method == 'POST':
         subject = request.form.get('subject')
         test_id = request.form.get('test_id')
@@ -353,54 +384,75 @@ def admin_create_test():
             return redirect(url_for('admin_create_test'))
             
         try:
-            # Create uploads directory if it doesn't exist
+            # Create base uploads directory if it doesn't exist
             os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
             
-            # Save the file
-            filename = f"{test_id}_{secure_filename(file.filename)}"
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            # Create test-specific directory
+            test_dir = os.path.join(app.config['UPLOAD_FOLDER'], test_id)
+            
+            # Check if test directory already exists
+            if os.path.exists(test_dir):
+                flash('Test ID already exists.', 'danger')
+                return redirect(url_for('admin_create_test'))
+                
+            os.makedirs(test_dir)
+            
+            # Save the uploaded file
+            filename = secure_filename(file.filename)
+            filepath = os.path.join(test_dir, filename)
             file.save(filepath)
             
-            # If it's a ZIP file, extract and find the first .md file
-            if filename.endswith('.zip'):
+            md_file = None
+            is_zip = filename.endswith('.zip')
+            
+            # Handle ZIP file
+            if is_zip:
+                # Extract ZIP contents
                 with zipfile.ZipFile(filepath, 'r') as zip_ref:
-                    # Extract to a temp directory
-                    temp_dir = tempfile.mkdtemp()
-                    zip_ref.extractall(temp_dir)
-                    
-                    # Find the first .md file
-                    for root, _, files in os.walk(temp_dir):
-                        for f in files:
-                            if f.endswith('.md'):
-                                # Move the .md file to the uploads folder
-                                src_path = os.path.join(root, f)
-                                dest_path = os.path.join(app.config['UPLOAD_FOLDER'], f)
-                                shutil.move(src_path, dest_path)
-                                filename = f
-                                break
-                        if filename != file.filename:  # If we found and moved an .md file
+                    zip_ref.extractall(test_dir)
+                
+                # Find the first .md file in the extracted contents
+                for root, _, files in os.walk(test_dir):
+                    for f in files:
+                        if f.endswith('.md'):
+                            md_file = f
                             break
-                    
-                    # Clean up temp directory and zip file
-                    shutil.rmtree(temp_dir, ignore_errors=True)
-                    os.remove(filepath)
+                    if md_file:
+                        break
+                
+                if not md_file:
+                    shutil.rmtree(test_dir)  # Clean up if no MD file found
+                    flash('ZIP file must contain at least one .md file.', 'danger')
+                    return redirect(url_for('admin_create_test'))
+                
+                # Remove the original zip file after extraction
+                os.remove(filepath)
+            else:
+                md_file = filename
             
             # Create test record
             test = Test(
                 subject=subject, 
                 test_id=test_id, 
                 created_by=current_user.id, 
-                filename=filename,
+                filename=md_file,
                 time_limit=time_limit
             )
             db.session.add(test)
             db.session.commit()
             
-            flash('Test created and question paper uploaded!', 'success')
+            flash('Test created and question paper uploaded successfully!', 'success')
             return redirect(url_for('admin_tests'))
             
         except Exception as e:
+            # Clean up in case of error
+            if 'test_dir' in locals() and os.path.exists(test_dir):
+                shutil.rmtree(test_dir, ignore_errors=True)
             flash(f'Error processing file: {str(e)}', 'error')
+            return redirect(url_for('admin_create_test'))
+            
+    return render_template('admin_create_test.html')
+  flash(f'Error processing file: {str(e)}', 'error')
             return redirect(url_for('admin_create_test'))
             
     return render_template('admin_create_test.html')
@@ -414,7 +466,7 @@ def admin_delete_test(test_id):
     # Optionally delete the uploaded file
     try:
         os.remove(os.path.join(app.config['UPLOAD_FOLDER'], test.filename))
-    except Exception:
+    excepes #eption:
         pass
     db.session.delete(test)
     db.session.commit()
@@ -422,7 +474,9 @@ def admin_delete_test(test_id):
     return redirect(url_for('admin_tests'))
 
 
-## Student Routes ##
+
+# Student Routes #
+
 @app.route('/student/tests')
 @login_required
 def student_tests():
@@ -430,13 +484,6 @@ def student_tests():
         abort(403)
     tests = Test.query.order_by(Test.created_at.desc()).all()
     return render_template('student_tests.html', tests=tests)
-
-@app.route('/student/results')
-@login_required
-def student_results():
-    if current_user.role != 'student':
-        abort(403)
-    return render_template('student_results.html')
 
 @app.route('/student/test/<test_id>/start', methods=['GET'])
 @login_required
@@ -460,7 +507,7 @@ def student_start_test(test_id):
         return render_template('student_test_start.html', 
                              test=test, 
                              questions=questions,
-                             time_limit=test.time_limit)
+            zz                 time_limit=test.time_limit)
     except Exception as e:
         flash(f'Error loading test: {str(e)}', 'error')
         return redirect(url_for('student_tests'))
@@ -602,6 +649,14 @@ def student_test_result(test_id, response_id):
                          time_taken=time_taken,
                          percentage=round((response.score / response.total_questions) * 100, 2))
 
+
+@app.route('/student/results')
+@login_required
+def student_results():
+    if current_user.role != 'student':
+        abort(403)
+    return render_template('student_results.html')
+
 def create_app():
     # Ensure upload directory exists
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -632,6 +687,21 @@ if __name__ == '__main__':
     
     try:
         app = create_app()
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    except Exception as e:
+        app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
+        raise 
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    
+    try:
+        app = create_app()
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    except Exception as e:
+        app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
+        raise 
         app.run(debug=True, host='0.0.0.0', port=5000)
     except Exception as e:
         app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
