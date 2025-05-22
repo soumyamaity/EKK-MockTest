@@ -27,8 +27,8 @@ with app.app_context():
     student = User.query.filter_by(username='student1').first()
     if not student:
         student = User(
-            username='student1',
-            password_hash=generate_password_hash('student123'),
+            username='student',
+            password_hash=generate_password_hash('student'),
             role='student',
             name='Student One'
         )

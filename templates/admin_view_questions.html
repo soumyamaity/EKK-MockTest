@@ -62,6 +62,115 @@
             color: #6c757d;
             font-style: italic;
         }
+        
+        .markdown-preview {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #24292e;
+        }
+
+        .markdown-preview h1,
+        .markdown-preview h2,
+        .markdown-preview h3,
+        .markdown-preview h4,
+        .markdown-preview h5,
+        .markdown-preview h6 {
+            margin-top: 1.5em;
+            margin-bottom: 0.8em;
+            font-weight: 600;
+            line-height: 1.25;
+            color: #24292e;
+        }
+
+        .markdown-preview h1 { 
+            font-size: 2em;
+            padding-bottom: 0.3em;
+            border-bottom: 1px solid #eaecef;
+        }
+
+        .markdown-preview h2 { 
+            font-size: 1.5em;
+            padding-bottom: 0.3em;
+            border-bottom: 1px solid #eaecef;
+        }
+
+        .markdown-preview h3 { font-size: 1.25em; }
+        .markdown-preview h4 { font-size: 1em; }
+        .markdown-preview h5 { font-size: 0.875em; }
+        .markdown-preview h6 { 
+            font-size: 0.85em;
+            color: #6a737d;
+        }
+
+        .markdown-preview p {
+            margin-top: 0;
+            margin-bottom: 16px;
+        }
+
+        .markdown-preview pre {
+            background-color: #f6f8fa;
+            border-radius: 6px;
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+        }
+
+        .markdown-preview code {
+            font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+            font-size: 85%;
+            background-color: rgba(27, 31, 35, 0.05);
+            border-radius: 3px;
+            padding: 0.2em 0.4em;
+            margin: 0;
+        }
+
+        .markdown-preview pre > code {
+            background-color: transparent;
+            padding: 0;
+            margin: 0;
+            font-size: 100%;
+            word-break: normal;
+            white-space: pre;
+            border: 0;
+        }
+
+        .markdown-preview blockquote {
+            padding: 0 1em;
+            color: #6a737d;
+            border-left: 0.25em solid #dfe2e5;
+            margin: 0 0 16px 0;
+        }
+
+        .markdown-preview table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 16px;
+            display: block;
+            overflow-x: auto;
+        }
+
+        .markdown-preview table th,
+        .markdown-preview table td {
+            padding: 6px 13px;
+            border: 1px solid #dfe2e5;
+        }
+
+        .markdown-preview table tr {
+            background-color: #fff;
+            border-top: 1px solid #c6cbd1;
+        }
+
+        .markdown-preview table tr:nth-child(2n) {
+            background-color: #f6f8fa;
+        }
+
+        .markdown-preview hr {
+            height: 0.25em;
+            padding: 0;
+            margin: 24px 0;
+            background-color: #e1e4e8;
+            border: 0;
+        }
     </style>
 </head>
 <body class="bg-light">
@@ -88,10 +197,21 @@
                         <a href="{{ url_for('admin_tests') }}" class="btn btn-secondary">Back to Tests</a>
                     </div>
                     
-                    <div class="questions-container bg-white p-4 rounded">
-                        <div class="markdown-content">
-                            {{ questions|safe }}
+                    <div class="mb-3">
+                        <div class="btn-group" role="group">
+                            <button type="button" class="btn btn-outline-primary active" id="previewBtn">Preview</button>
+                            <button type="button" class="btn btn-outline-secondary" id="rawBtn">Raw Markdown</button>
                         </div>
+                    </div>
+                    
+                    <!-- Preview Pane -->
+                    <div id="previewPane" class="markdown-preview p-3 border rounded">
+                        {{ questions|safe }}
+                    </div>
+                    
+                    <!-- Raw Markdown Pane (initially hidden) -->
+                    <div id="rawPane" class="d-none">
+                        <pre class="bg-light p-3 border rounded"><code>{{ raw_markdown }}</code></pre>
                     </div>
                 </div>
             </div>
@@ -100,5 +220,27 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const previewBtn = document.getElementById('previewBtn');
+    const rawBtn = document.getElementById('rawBtn');
+    const previewPane = document.getElementById('previewPane');
+    const rawPane = document.getElementById('rawPane');
+
+    previewBtn.addEventListener('click', function() {
+        previewBtn.classList.add('active');
+        rawBtn.classList.remove('active');
+        previewPane.classList.remove('d-none');
+        rawPane.classList.add('d-none');
+    });
+
+    rawBtn.addEventListener('click', function() {
+        rawBtn.classList.add('active');
+        previewBtn.classList.remove('active');
+        rawPane.classList.remove('d-none');
+        previewPane.classList.add('d-none');
+    });
+});
+</script>
 </body>
 </html>

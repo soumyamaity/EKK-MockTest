@@ -57,6 +57,7 @@
                     {% endwith %}
 
                     <form method="post" enctype="multipart/form-data">
+                        <input type="hidden" name="created_by" value="{{ current_user.id }}">
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label for="subject" class="form-label">Subject</label>
@@ -99,25 +100,47 @@
             
             <div class="card mt-4">
                 <div class="card-header">
-                    <h5 class="mb-0">Markdown Format Example</h5>
+                    <h5 class="mb-0">Markdown Format Question Example</h5>
                 </div>
                 <div class="card-body">
-                    <pre class="bg-light p-3 rounded"><code>Q: What is the capital of France?
-A: London
-B: Berlin
-C: Paris
-D: Madrid
-Answer: C
+                    <pre class="bg-light p-3 rounded"><code>
+&lt;!-- Put your comments within this bracket, this will not be shown in actual Test --&gt;
+
+# Question 1 
+What is the unit of electric charge?
+
+- [x] Coulomb
+- [ ] Ampere
+- [ ] Volt
+- [ ] Watt
 
 ---
 
-Q: Which planet is known as the Red Planet?
-A: Venus
-B: Mars
-C: Jupiter
-D: Saturn
-Answer: B</code></pre>
-                    <p class="mt-2 mb-0">Each question should be separated by three dashes (---). The correct answer should be specified with 'Answer:' followed by the option letter (A, B, C, or D).</p>
+# Question 2 
+Identify the chemical shown in the image:
+
+![image name](image path)
+
+- [ ] Carbon dioxide
+- [x] Water
+- [ ] Oxygen
+- [ ] Glucose
+
+---
+# Question 3
+What is the result of the following equation?
+$$
+E = mc^2
+$$
+
+- [x] Energy-mass equivalence
+- [ ] Law of gravitation
+- [ ] Law of inertia
+- [ ] Conservation of momentum
+---
+
+                    </code></pre>
+                    <p class="mt-2 mb-0">Each question should be separated by three dashes (---). The Question should start with # Question No' followed by the actual question in next line. Each option should start with '- [ ]'. The correct answer should be specified with '- [X]'.</p>
                 </div>
             </div>
         </div>
