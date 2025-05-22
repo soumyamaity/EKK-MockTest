@@ -12,6 +12,7 @@ import re
 import markdown
 from bs4 import BeautifulSoup
 from debug_utils import log_exceptions, log_info, log_error, log_debug
+import pymdownx
 
 # Helper function to parse questions from markdown
 def parse_markdown_questions(content):
@@ -54,7 +55,7 @@ def parse_markdown_questions(content):
     
     return questions
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='/static')
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -306,13 +307,13 @@ def admin_view_questions(test_id):
     # Use the direct path to the markdown file
     for dirpath, dirnames, filenames in os.walk(test.foldername):
         if test.filename in filenames:
-            file_path  = os.path.join(dirpath, test.filename)
-            break
+            file_path = os.path.join(dirpath, test.filename)
+            upload_dir = dirpath
+
     if not file_path:
-        print(f"'{test.filename}' not found in '{start_directory}' or its subfolders.")
+        print(f"'{test.filename}' not found in '{test.foldername}' or its subfolders.")
     
     # Debug information
-    upload_dir = os.path.join(app.root_path, test.foldername)
     print(f"Looking for file at: {file_path}")
     print(f"Upload directory exists: {os.path.exists(upload_dir)}")
     print(f"File exists: {os.path.exists(file_path)}")
@@ -321,8 +322,33 @@ def admin_view_questions(test_id):
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_markdown = f.read()
+            html_content = markdown.markdown(raw_markdown, extensions=['markdown.extensions.tables', 'markdown.extensions.extra', 'pymdownx.extra', 'pymdownx.tasklist', 'pymdownx.arithmatex'], extension_configs={'pymdownx.arithmatex': {'generic': True}})
+            '''
+            # Process image paths in markdown
+            def process_image_path(match):
+                img_path = match.group(2)
+                # If it's a relative path
+                if not img_path.startswith(('http://', 'https://', '/')):
+                    # Convert to URL using the test_files route
+                    return f'{match.group(1)}{url_for("serve_test_file", test_id=test.test_id, filename=img_path)}{match.group(3)}'
+                return match.group(0)
+                
+            # Process markdown image tags
+            processed_markdown = re.sub(
+                r'(!\[.*?\]\([^)]*\))(?=[^)]*\s*"[^"]*"[^)]*\)|\s*"[^"]*"[^)]*\)|\s*[^)]*\))', 
+                process_image_path, 
+                raw_markdown
+            )
+            # Process HTML img tags
+            processed_markdown = re.sub(
+                r'(<img[^>]+src=["\'])(?!https?://|/)([^"\']+)(["\'])', 
+                process_image_path, 
+                processed_markdown
+            )
+            
+            # Convert markdown to HTML
             html_content = markdown.markdown(
-                raw_markdown,
+                processed_markdown,
                 extensions=[
                     'fenced_code',
                     'tables',
@@ -330,11 +356,14 @@ def admin_view_questions(test_id):
                     'toc'
                 ]
             )
-            print(f"Successfully converted markdown to HTML")
+            '''
+            
+            print("Successfully converted markdown to HTML")
             return render_template('admin_view_questions.html', 
                                test=test, 
                                questions=html_content,
                                raw_markdown=raw_markdown)
+            
     except FileNotFoundError:
         error_msg = f"No questions found for this test. Expected file at: {file_path}"
         print(f"File not found: {file_path}")
