@@ -16,45 +16,72 @@ import pymdownx
 
 # Helper function to parse questions from markdown
 def parse_markdown_questions(content):
+
+    html = markdown.markdown(content, extensions=['markdown.extensions.tables', 'markdown.extensions.extra', 'pymdownx.extra', 'pymdownx.tasklist', 'pymdownx.arithmatex'], extension_configs={'pymdownx.arithmatex': {'generic': True}})
+    soup = BeautifulSoup(html, 'html.parser')
+
+    # Split questions using <hr> tags
+    questions_html = []
+    current_question = []
+
+    for elem in soup.contents:
+        if elem.name == 'hr':
+            if current_question:
+                questions_html.append(current_question)
+                current_question = []
+        else:
+            current_question.append(elem)
+
+    # Add the last question
+    if current_question:
+        questions_html.append(current_question)
+
+    # Parse each question block
     questions = []
-    # Split by question blocks (assuming questions are separated by ---)
-    blocks = re.split(r'\n---+\n', content)
-    
-    for block in blocks:
-        if not block.strip():
-            continue
-            
-        question = {}
-        lines = [line.strip() for line in block.split('\n') if line.strip()]
-        
-        # Extract question text (lines starting with Q: or first line)
-        question_text = []
-        options = {}
-        correct_option = None
-        
-        for line in lines:
-            if line.lower().startswith('q:'):
-                question_text.append(line[2:].strip())
-            elif line.lower().startswith(('a:', 'b:', 'c:', 'd:')):
-                option = line[0].upper()
-                options[option] = line[2:].strip()
-            elif line.lower().startswith('answer:'):
-                correct_option = line.split(':', 1)[1].strip().upper()
-            else:
-                question_text.append(line)
-        
-        if question_text and options and correct_option in options:
-            questions.append({
-                'text': '\n'.join(question_text),
-                'option_a': options.get('A', ''),
-                'option_b': options.get('B', ''),
-                'option_c': options.get('C', ''),
-                'option_d': options.get('D', ''),
-                'correct_option': correct_option
-            })
-    
+
+    for q_html in questions_html:
+        question_dict = {
+            'text': '',
+            'option_a': '',
+            'option_b': '',
+            'option_c': '',
+            'option_d': '',
+            'correct_option': '',
+            'explanation': ''
+        }
+
+        options_labels = ['A', 'B', 'C', 'D']
+        option_idx = 0
+
+        for tag in q_html:
+            if tag.name == 'h1':
+                continue  # Ignore the heading (Question number)
+            elif tag.name == 'p':
+                text = tag.get_text().strip()
+                if text.lower().startswith('explanation:'):
+                    question_dict['explanation'] = text[len('explanation:'):].strip()
+                else:
+                    question_dict['text'] += text + "\n"
+            elif tag.name == 'ul':
+                for li in tag.find_all('li'):
+                    opt_text = li.get_text().strip()
+                    if li.text.startswith('[x]'):
+                        question_dict['correct_option'] = options_labels[option_idx]
+                        opt_text = opt_text.replace('[x]', '').strip()
+                    else:
+                        opt_text = opt_text.replace('[ ]', '').strip()
+
+                    key = f'option_{options_labels[option_idx].lower()}'
+                    question_dict[key] = opt_text
+                    option_idx += 1
+
+        question_dict['text'] = question_dict['text'].strip()
+        questions.append(question_dict)
+    print(questions)
     return questions
 
+
+# Main app Configuration
 app = Flask(__name__, static_url_path='/static')
 app.config['SECRET_KEY'] = 'your_secret_key'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///db.sqlite3'
@@ -295,7 +322,23 @@ def admin_questions_edit(test_id):
     if current_user.role != 'admin':
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
-    return render_template('admin_edit_questions.html', test=test)
+    
+    # Find the questions file
+    file_path = None
+    for dirpath, dirnames, filenames in os.walk(test.foldername):
+        if test.filename in filenames:
+            file_path = os.path.join(dirpath, test.filename)
+            break
+    
+    questions = ""
+    if file_path and os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                questions = f.read()
+        except Exception as e:
+            print(f"Error reading questions file: {e}")
+    
+    return render_template('admin_edit_questions.html', test=test, questions=questions)
 
 @app.route('/admin/questions/view/<test_id>')
 @login_required
@@ -323,40 +366,6 @@ def admin_view_questions(test_id):
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_markdown = f.read()
             html_content = markdown.markdown(raw_markdown, extensions=['markdown.extensions.tables', 'markdown.extensions.extra', 'pymdownx.extra', 'pymdownx.tasklist', 'pymdownx.arithmatex'], extension_configs={'pymdownx.arithmatex': {'generic': True}})
-            '''
-            # Process image paths in markdown
-            def process_image_path(match):
-                img_path = match.group(2)
-                # If it's a relative path
-                if not img_path.startswith(('http://', 'https://', '/')):
-                    # Convert to URL using the test_files route
-                    return f'{match.group(1)}{url_for("serve_test_file", test_id=test.test_id, filename=img_path)}{match.group(3)}'
-                return match.group(0)
-                
-            # Process markdown image tags
-            processed_markdown = re.sub(
-                r'(!\[.*?\]\([^)]*\))(?=[^)]*\s*"[^"]*"[^)]*\)|\s*"[^"]*"[^)]*\)|\s*[^)]*\))', 
-                process_image_path, 
-                raw_markdown
-            )
-            # Process HTML img tags
-            processed_markdown = re.sub(
-                r'(<img[^>]+src=["\'])(?!https?://|/)([^"\']+)(["\'])', 
-                process_image_path, 
-                processed_markdown
-            )
-            
-            # Convert markdown to HTML
-            html_content = markdown.markdown(
-                processed_markdown,
-                extensions=[
-                    'fenced_code',
-                    'tables',
-                    'codehilite',
-                    'toc'
-                ]
-            )
-            '''
             
             print("Successfully converted markdown to HTML")
             return render_template('admin_view_questions.html', 
@@ -582,10 +591,14 @@ def student_start_test(test_id):
     test = Test.query.filter_by(test_id=test_id).first_or_404()
     
     # Read and parse the markdown file
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
-    
+    for dirpath, dirnames, filenames in os.walk(test.foldername):
+        if test.filename in filenames:
+            file_path = os.path.join(dirpath, test.filename)
+            upload_dir = dirpath
+
+    print(f"directory path = {dirpath}")
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
         questions = parse_markdown_questions(content)
         
@@ -599,6 +612,7 @@ def student_start_test(test_id):
                              time_limit=test.time_limit)
     except Exception as e:
         flash(f'Error loading test: {str(e)}', 'error')
+        print(f"Error loading test: {str(e)}")
         return redirect(url_for('student_tests'))
 
 @app.route('/student/test/<test_id>/jee', methods=['GET', 'POST'])
@@ -611,9 +625,11 @@ def student_jee_test(test_id):
     
     # Get questions from session or load from file
     if 'test_questions' not in session or session.get('test_id') != test_id:
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], test.filename)
+        for dirpath, dirnames, filenames in os.walk(test.foldername):
+            if test.filename in filenames:
+                file_path = os.path.join(dirpath, test.filename)
         try:
-            with open(filepath, 'r', encoding='utf-8') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             questions = parse_markdown_questions(content)
             session['test_questions'] = questions
