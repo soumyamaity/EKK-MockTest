@@ -23,30 +23,15 @@ import pymdownx
 
 # Helper function to parse questions from markdown
 def parse_markdown_questions(content):
-
-    html = markdown.markdown(content, extensions=['markdown.extensions.tables', 'markdown.extensions.extra', 'pymdownx.extra', 'pymdownx.tasklist', 'pymdownx.arithmatex'], extension_configs={'pymdownx.arithmatex': {'generic': True}})
-    soup = BeautifulSoup(html, 'html.parser')
-
-    # Split questions using <hr> tags
-    questions_html = []
-    current_question = []
-
-    for elem in soup.contents:
-        if elem.name == 'hr':
-            if current_question:
-                questions_html.append(current_question)
-                current_question = []
-        else:
-            current_question.append(elem)
-
-    # Add the last question
-    if current_question:
-        questions_html.append(current_question)
-
-    # Parse each question block
+    # First, split the content into individual questions
+    question_blocks = content.split('---')
     questions = []
-
-    for q_html in questions_html:
+    
+    for block in question_blocks:
+        if not block.strip():
+            continue
+            
+        lines = [line.strip() for line in block.split('\n') if line.strip()]
         question_dict = {
             'text': '',
             'option_a': '',
@@ -56,35 +41,41 @@ def parse_markdown_questions(content):
             'correct_option': '',
             'explanation': ''
         }
-
+        
+        current_section = 'text'
+        option_index = 0
         options_labels = ['A', 'B', 'C', 'D']
-        option_idx = 0
-
-        for tag in q_html:
-            if tag.name == 'h1':
-                continue  # Ignore the heading (Question number)
-            elif tag.name == 'p':
-                text = tag.get_text().strip()
-                if text.lower().startswith('explanation:'):
-                    question_dict['explanation'] = text[len('explanation:'):].strip()
-                else:
-                    question_dict['text'] += text + "\n"
-            elif tag.name == 'ul':
-                for li in tag.find_all('li'):
-                    opt_text = li.get_text().strip()
-                    if li.text.startswith('[x]'):
-                        question_dict['correct_option'] = options_labels[option_idx]
-                        opt_text = opt_text.replace('[x]', '').strip()
-                    else:
-                        opt_text = opt_text.replace('[ ]', '').strip()
-
-                    key = f'option_{options_labels[option_idx].lower()}'
-                    question_dict[key] = opt_text
-                    option_idx += 1
-
+        
+        for line in lines:
+            # Skip question number lines
+            if line.startswith('# Question'):
+                continue
+                
+            # Handle explanation
+            if line.lower().startswith('explanation:'):
+                question_dict['explanation'] = line[len('explanation:'):].strip()
+                current_section = 'explanation'
+            # Handle options
+            elif line.startswith(('- [ ]', '- [x]')) or (line.startswith('-') and '[' in line):
+                # Extract the option text and check if it's the correct answer
+                option_text = line[line.find(']') + 1:].strip()
+                
+                # Set the correct option if this is marked with [x]
+                if '- [x]' in line:
+                    question_dict['correct_option'] = options_labels[option_index]
+                
+                # Store the option text
+                key = f'option_{options_labels[option_index].lower()}'
+                question_dict[key] = option_text
+                option_index += 1
+            # Handle regular text (question content)
+            elif current_section == 'text':
+                question_dict['text'] += line + '\n'
+        
+        # Clean up the question text
         question_dict['text'] = question_dict['text'].strip()
         questions.append(question_dict)
-    print(questions)
+    
     return questions
 
 
