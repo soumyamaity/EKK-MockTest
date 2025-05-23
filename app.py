@@ -1,4 +1,11 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session, abort, send_from_directory, jsonify, current_app
+from urllib.parse import urlparse, urljoin
+
+def is_safe_url(target):
+    """Ensure the target URL is safe to redirect to (prevents open redirects)."""
+    ref_url = urlparse(request.host_url)
+    test_url = urlparse(urljoin(request.host_url, target))
+    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
@@ -165,26 +172,38 @@ def load_user(user_id):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    # If already logged in, redirect to appropriate dashboard
     if current_user.is_authenticated:
         if current_user.role == 'admin':
             return redirect(url_for('admin_dashboard'))
-        else:
-            return redirect(url_for('student_dashboard'))
+        return redirect(url_for('student_dashboard'))
+    
+    next_page = request.args.get('next')
+            
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
+        remember = True if request.form.get('remember') else False
+        
         # Try to find user by username or email
         user = User.query.filter((User.username == username) | (User.email == username)).first()
+        
         if user and user.check_password(password):
-            login_user(user)
+            login_user(user, remember=remember)
             flash('Logged in successfully!', 'success')
+            
+            # Safe URL validation
+            if next_page and is_safe_url(next_page):
+                return redirect(next_page)
             if user.role == 'admin':
                 return redirect(url_for('admin_dashboard'))
-            else:
-                return redirect(url_for('student_dashboard'))
+            return redirect(url_for('student_dashboard'))
         else:
-            flash('Invalid username/email or password.', 'danger')
-    return render_template('login.html')
+            flash('Invalid username or password', 'danger')
+    
+    # Pass next_page to the template to maintain it in the login form
+    return render_template('login.html', next=next_page)
+
 
 @app.route('/logout')
 @login_required
@@ -219,10 +238,21 @@ def admin_dashboard():
 @app.route('/student/dashboard')
 @login_required
 def student_dashboard():
-    print(f"[DEBUG] User: {getattr(current_user, 'username', None)}, Role: {getattr(current_user, 'role', None)}, Authenticated: {getattr(current_user, 'is_authenticated', None)}")
-    if current_user.role != 'student':
-        flash('Access denied.', 'danger')
+    print(f"[DEBUG] Student Dashboard - User: {getattr(current_user, 'username', None)}, "
+          f"Role: {getattr(current_user, 'role', None)}, "
+          f"Authenticated: {getattr(current_user, 'is_authenticated', None)}")
+    
+    if not current_user.is_authenticated:
+        print("[DEBUG] User not authenticated, redirecting to login")
+        flash('Please log in to access this page.', 'warning')
         return redirect(url_for('login'))
+        
+    if current_user.role != 'student':
+        print(f"[DEBUG] Access denied - User role is {current_user.role}, expected student")
+        flash('Access denied. Student access only.', 'danger')
+        return redirect(url_for('login'))
+        
+    print("[DEBUG] Rendering student dashboard")
     return render_template('student_dashboard.html')
 
 @app.route('/admin/users')
