@@ -18,65 +18,170 @@ from datetime import datetime, timedelta
 import re
 import markdown
 from bs4 import BeautifulSoup
-from debug_utils import log_exceptions, log_info, log_error, log_debug
+from debug_utils import log_exceptions, log_info, log_error, log_debug # Ensure all are imported
 import pymdownx
 
-# Helper function to parse questions from markdown
+# Helper function to parse a single question block from markdown
+def parse_single_question_block(question_block_md):
+    question_dict = {
+        'text': '',
+        'option_a': '',
+        'option_b': '',
+        'option_c': '',
+        'option_d': '',
+        'correct_option': '',
+        'explanation': ''
+    }
+    options_labels = ['A', 'B', 'C', 'D']
+    option_index = 0
+
+    # Convert markdown to HTML
+    # Using pymdownx.extra for better table/definition list support if needed, 
+    # and pymdownx.tasklist for checkbox parsing.
+    html_content = markdown.markdown(
+        question_block_md, 
+        extensions=['pymdownx.tasklist', 'markdown.extensions.extra']
+    )
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    # Extract question text (typically in <p> tags not part of options or explanation)
+    # and explanation
+    paragraphs = soup.find_all('p')
+    question_text_parts = []
+    for p in paragraphs:
+        p_text = p.get_text(separator=' ', strip=True)
+        if p_text.lower().startswith('explanation:'):
+            question_dict['explanation'] = p_text[len('explanation:'):].strip()
+        elif not p.find_parent('li'): # Avoid text within list items if any <p> are there
+             # Check if it's part of a tasklist item (though options are usually not in <p>)
+            is_option_related = False
+            parent_li = p.find_parent('li', class_='task-list-item')
+            if parent_li:
+                 is_option_related = True
+            
+            if not is_option_related and not question_dict['explanation']: # if explanation is already found, this is likely not it
+                 question_text_parts.append(p_text)
+
+    if question_text_parts:
+        question_dict['text'] = "\n".join(question_text_parts).strip()
+    elif soup.body and soup.body.contents: # Fallback if question text is not in <p>
+        # Try to get the first text node or non-list/non-explanation content
+        first_content = soup.body.contents[0]
+        if isinstance(first_content, str):
+             question_dict['text'] = first_content.strip()
+        elif hasattr(first_content, 'get_text'):
+             temp_text = first_content.get_text(strip=True)
+             if not temp_text.lower().startswith('explanation:') and not first_content.name == 'ul':
+                 question_dict['text'] = temp_text
+
+
+    # Extract options from <li> elements (task list items)
+    list_items = soup.find_all('li', class_='task-list-item')
+    if not list_items: # Fallback if specific class is not used but it's a list
+        list_items = soup.find_all('li')
+
+    for li in list_items:
+        if option_index < len(options_labels):
+            checkbox = li.find('input', type='checkbox')
+            option_text = ""
+            # Get text, excluding the checkbox itself if it was rendered with text
+            for content_part in li.contents:
+                if isinstance(content_part, str):
+                    option_text += content_part.strip()
+                elif hasattr(content_part, 'get_text'):
+                    # Avoid adding checkbox tag text if any, though usually not an issue
+                    if not (hasattr(content_part, 'name') and content_part.name == 'input' and content_part.get('type') == 'checkbox'):
+                        option_text += " " + content_part.get_text(strip=True)
+            option_text = option_text.strip()
+            
+            # If parsing gives empty string from complex HTML, try direct text of li
+            if not option_text and li.get_text(strip=True):
+                 option_text = " ".join(li.get_text(strip=True).split()) # Normalize spaces
+
+            # Clean up option text if it starts with '[ ]' or '[x]' due to non-standard markdown rendering
+            option_text = re.sub(r'^\[[xX\s]\]\s*', '', option_text).strip()
+
+            key = f'option_{options_labels[option_index].lower()}'
+            question_dict[key] = option_text
+            
+            if checkbox and checkbox.has_attr('checked'):
+                question_dict['correct_option'] = options_labels[option_index]
+            
+            option_index += 1
+        else:
+            log_debug(f"Found more than 4 options for a question block: {question_block_md}")
+            break 
+            
+    # If question text is still empty, try to find text not in ul/ol/li
+    if not question_dict['text']:
+        all_text = soup.get_text(separator='\n', strip=True)
+        potential_text = []
+        in_options_or_explanation = False
+        for line in all_text.split('\n'):
+            line_stripped = line.strip()
+            if any(opt_text == line_stripped for opt_key, opt_text in question_dict.items() if opt_key.startswith('option_') and opt_text):
+                in_options_or_explanation = True
+                continue
+            if question_dict['explanation'] and question_dict['explanation'] in line_stripped:
+                in_options_or_explanation = True
+                continue
+            if line_stripped and not (line_stripped.startswith('- [') or line_stripped.lower().startswith('explanation:')):
+                 potential_text.append(line_stripped)
+            
+        # Take the longest continuous block of text not part of options/explanation
+        if potential_text:
+             # Heuristic: Question text is usually before options.
+             # This part might need more robust logic based on actual markdown structure.
+             first_option_text = question_dict.get('option_a', '')
+             candidate_text_joined = " ".join(potential_text)
+             if first_option_text and first_option_text in candidate_text_joined:
+                 question_dict['text'] = candidate_text_joined.split(first_option_text)[0].strip()
+             else:
+                 question_dict['text'] = candidate_text_joined # Fallback
+
+    # Final cleanup of text if it's just the filename (edge case for bad markdown)
+    if question_dict['text'].endswith(".md"):
+        question_dict['text'] = "" # Or some placeholder like "Error: Could not parse question text"
+
+    return question_dict
+
+# Main helper function to parse a string containing multiple questions
 def parse_markdown_questions(content):
     # First, split the content into individual questions
     question_blocks = content.split('---')
     questions = []
     
-    for block in question_blocks:
-        if not block.strip():
+    for block_md in question_blocks:
+        if not block_md.strip():
             continue
-            
-        lines = [line.strip() for line in block.split('\n') if line.strip()]
-        question_dict = {
-            'text': '',
-            'option_a': '',
-            'option_b': '',
-            'option_c': '',
-            'option_d': '',
-            'correct_option': '',
-            'explanation': ''
-        }
         
-        current_section = 'text'
-        option_index = 0
-        options_labels = ['A', 'B', 'C', 'D']
-        
-        for line in lines:
-            # Skip question number lines
-            if line.startswith('# Question'):
-                continue
-                
-            # Handle explanation
-            if line.lower().startswith('explanation:'):
-                question_dict['explanation'] = line[len('explanation:'):].strip()
-                current_section = 'explanation'
-            # Handle options
-            elif line.startswith(('- [ ]', '- [x]')) or (line.startswith('-') and '[' in line):
-                # Extract the option text and check if it's the correct answer
-                option_text = line[line.find(']') + 1:].strip()
-                
-                # Set the correct option if this is marked with [x]
-                if '- [x]' in line:
-                    question_dict['correct_option'] = options_labels[option_index]
-                
-                # Store the option text
-                key = f'option_{options_labels[option_index].lower()}'
-                question_dict[key] = option_text
-                option_index += 1
-            # Handle regular text (question content)
-            elif current_section == 'text':
-                question_dict['text'] += line + '\n'
-        
-        # Clean up the question text
-        question_dict['text'] = question_dict['text'].strip()
-        questions.append(question_dict)
+        # Parse each block using the new single block parser
+        question_data = parse_single_question_block(block_md)
+        questions.append(question_data)
     
     return questions
+
+# Helper function to find the question file path
+def get_question_file_path(base_folder, filename):
+    """
+    Finds the full path to a file within a base folder and its subdirectories.
+    Returns the full path if found, otherwise None.
+    """
+    if not base_folder or not filename:
+        log_error("get_question_file_path: base_folder or filename is missing.")
+        return None
+    
+    # Ensure base_folder exists to prevent os.walk from erroring on non-existent paths
+    if not os.path.exists(base_folder):
+        log_error(f"get_question_file_path: Base folder '{base_folder}' does not exist.")
+        return None
+
+    for dirpath, _, filenames in os.walk(base_folder):
+        if filename in filenames:
+            return os.path.join(dirpath, filename)
+    
+    log_info(f"get_question_file_path: File '{filename}' not found in '{base_folder}'.")
+    return None
 
 
 # Main app Configuration
@@ -222,28 +327,28 @@ def admin_dashboard():
     user_count = User.query.count()
     student_count = User.query.filter((User.role == 'student') | (User.role == 'user')).count()
     test_count = Test.query.count()
-    print(f"[DEBUG] user_count: {user_count}, test_count: {test_count}")
+    log_debug(f"user_count: {user_count}, test_count: {test_count}")
     result_count = 0  # Placeholder, update as needed
     return render_template('admin_dashboard.html', user_count=user_count, student_count=student_count, test_count=test_count, result_count=result_count)
 
 @app.route('/student/dashboard')
 @login_required
 def student_dashboard():
-    print(f"[DEBUG] Student Dashboard - User: {getattr(current_user, 'username', None)}, "
-          f"Role: {getattr(current_user, 'role', None)}, "
-          f"Authenticated: {getattr(current_user, 'is_authenticated', None)}")
+    log_debug(f"Student Dashboard - User: {getattr(current_user, 'username', None)}, "
+              f"Role: {getattr(current_user, 'role', None)}, "
+              f"Authenticated: {getattr(current_user, 'is_authenticated', None)}")
     
     if not current_user.is_authenticated:
-        print("[DEBUG] User not authenticated, redirecting to login")
+        log_debug("User not authenticated, redirecting to login")
         flash('Please log in to access this page.', 'warning')
         return redirect(url_for('login'))
         
     if current_user.role != 'student':
-        print(f"[DEBUG] Access denied - User role is {current_user.role}, expected student")
+        log_debug(f"Access denied - User role is {current_user.role}, expected student")
         flash('Access denied. Student access only.', 'danger')
         return redirect(url_for('login'))
         
-    print("[DEBUG] Rendering student dashboard")
+    log_debug("Rendering student dashboard")
     return render_template('student_dashboard.html')
 
 @app.route('/admin/users')
@@ -344,22 +449,22 @@ def admin_questions_edit(test_id):
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
     
-    # Find the questions file
-    file_path = None
-    for dirpath, dirnames, filenames in os.walk(test.foldername):
-        if test.filename in filenames:
-            file_path = os.path.join(dirpath, test.filename)
-            break
+    file_path = get_question_file_path(test.foldername, test.filename)
     
-    questions = ""
-    if file_path and os.path.exists(file_path):
+    questions_content = ""
+    if file_path:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                questions = f.read()
+                questions_content = f.read()
         except Exception as e:
-            print(f"Error reading questions file: {e}")
+            log_error(f"Error reading questions file '{file_path}': {e}")
+            flash(f"Error reading question file for test {test.test_id}.", "danger")
+    else:
+        log_error(f"Question file not found for test ID {test.test_id} in folder {test.foldername}")
+        flash(f"Question file not found for test {test.test_id}.", "danger")
+        # questions_content remains ""
     
-    return render_template('admin_edit_questions.html', test=test, questions=questions)
+    return render_template('admin_edit_questions.html', test=test, questions=questions_content)
 
 @app.route('/admin/questions/view/<test_id>')
 @login_required
@@ -368,27 +473,25 @@ def admin_view_questions(test_id):
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
     
-    # Use the direct path to the markdown file
-    for dirpath, dirnames, filenames in os.walk(test.foldername):
-        if test.filename in filenames:
-            file_path = os.path.join(dirpath, test.filename)
-            upload_dir = dirpath
-
+    file_path = get_question_file_path(test.foldername, test.filename)
+    
     if not file_path:
-        print(f"'{test.filename}' not found in '{test.foldername}' or its subfolders.")
-    
-    # Debug information
-    print(f"Looking for file at: {file_path}")
-    print(f"Upload directory exists: {os.path.exists(upload_dir)}")
-    print(f"File exists: {os.path.exists(file_path)}")
-    print(f"Files in directory: {os.listdir(upload_dir) if os.path.exists(upload_dir) else 'Directory not found'}")
-    
+        log_error(f"Question file '{test.filename}' not found in '{test.foldername}' for test ID {test.test_id}.")
+        flash(f"Question file not found for test {test.test_id}.", "danger")
+        return render_template('admin_view_questions.html', test=test, error=f"Question file not found.")
+
+    log_debug(f"Looking for file at: {file_path}")
+    # upload_dir can be derived from file_path if needed: os.path.dirname(file_path)
+    # log_debug(f"Upload directory exists: {os.path.exists(os.path.dirname(file_path))}")
+    log_debug(f"File exists: {os.path.exists(file_path)}")
+    # log_debug(f"Files in directory: {os.listdir(os.path.dirname(file_path)) if os.path.exists(os.path.dirname(file_path)) else 'Directory not found'}")
+
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             raw_markdown = f.read()
             html_content = markdown.markdown(raw_markdown, extensions=['markdown.extensions.tables', 'markdown.extensions.extra', 'pymdownx.extra', 'pymdownx.tasklist', 'pymdownx.arithmatex'], extension_configs={'pymdownx.arithmatex': {'generic': True}})
             
-            print("Successfully converted markdown to HTML")
+            log_info("Successfully converted markdown to HTML")
             return render_template('admin_view_questions.html', 
                                test=test, 
                                questions=html_content,
@@ -396,17 +499,19 @@ def admin_view_questions(test_id):
             
     except FileNotFoundError:
         error_msg = f"No questions found for this test. Expected file at: {file_path}"
-        print(f"File not found: {file_path}")
+        log_error(f"File not found: {file_path}")
         return render_template('admin_view_questions.html', 
                            test=test,
                            error=error_msg)
     except Exception as e:
         error_msg = f"Error reading questions: {str(e)}"
-        print(error_msg)
+        log_error(error_msg)
+        # The following print seems to be a leftover or mistake, as it's after a return.
+        # If it were reachable, it would be: log_error(f"Error: {str(e)}")
         return render_template('admin_view_questions.html',
                            test=test,
                            error=error_msg)
-        print(f"Error: {str(e)}")
+        # print(f"Error: {str(e)}") # This line is unreachable
     
     return render_template('admin_view_questions.html', 
                          test=test, 
@@ -456,8 +561,8 @@ def admin_create_test():
         abort(403)
     
     # Debug information
-    print(f"Current user: {current_user}")
-    print(f"Current user ID: {current_user.id if current_user.is_authenticated else 'Not authenticated'}")
+    log_debug(f"Current user: {current_user}")
+    log_debug(f"Current user ID: {current_user.id if current_user.is_authenticated else 'Not authenticated'}")
     
     if request.method == 'POST':
         subject = request.form.get('subject')
@@ -473,118 +578,190 @@ def admin_create_test():
             flash('Please upload a Markdown (.md) or ZIP file containing Markdown.', 'danger')
             return redirect(url_for('admin_create_test'))
         
+        test_dir = None # Initialize test_dir to ensure it's available in finally/except
         try:
             # Create test directory inside UPLOAD_FOLDER
             test_dir = os.path.join(app.config['UPLOAD_FOLDER'], test_id)
-            
-            # Check if test directory already exists
+            log_info(f"Attempting to create test directory: {test_dir}")
+
             if os.path.exists(test_dir):
-                flash(f'A test with ID {test_id} already exists.', 'danger')
+                flash(f'A test with ID {test_id} already exists. Please choose a different Test ID.', 'danger')
+                log_warn(f"Test directory {test_dir} already exists.")
                 return redirect(url_for('admin_create_test'))
                 
-            # Create the test directory
             os.makedirs(test_dir, exist_ok=True)
+            log_info(f"Successfully created test directory: {test_dir}")
             
-            if file.filename.endswith('.md'):
-                # Handle MD file upload
-                filename = secure_filename(file.filename)
+            original_filename = secure_filename(file.filename)
+
+            if original_filename.endswith('.md'):
                 filepath = os.path.join(test_dir, 'questions.md')
+                log_info(f"Saving uploaded MD file to: {filepath}")
                 file.save(filepath)
+                log_info(f"Successfully saved MD file: {filepath}")
                 
-            elif file.filename.endswith('.zip'):
-                # Save the zip file temporarily
-                temp_zip = os.path.join(test_dir, 'temp.zip')
-                file.save(temp_zip)
+            elif original_filename.endswith('.zip'):
+                temp_zip_path = os.path.join(test_dir, original_filename)
+                log_info(f"Saving uploaded ZIP file to: {temp_zip_path}")
+                file.save(temp_zip_path)
+                log_info(f"Successfully saved ZIP file: {temp_zip_path}")
                 
-                # Extract the zip file
-                with zipfile.ZipFile(temp_zip, 'r') as zip_ref:
+                log_info(f"Attempting to extract ZIP file: {temp_zip_path}")
+                with zipfile.ZipFile(temp_zip_path, 'r') as zip_ref:
                     zip_ref.extractall(test_dir)
+                log_info(f"Successfully extracted ZIP file to: {test_dir}")
                 
-                # Remove the zip file
-                os.remove(temp_zip)
+                log_info(f"Attempting to remove temporary ZIP file: {temp_zip_path}")
+                os.remove(temp_zip_path)
+                log_info(f"Successfully removed temporary ZIP file: {temp_zip_path}")
                 
-                # Search for .md files recursively in the extracted contents
                 md_files = []
-                for root, _, files in os.walk(test_dir):
-                    for file in files:
+                for root, _, files_in_zip in os.walk(test_dir):
+                    for file_iter in files_in_zip:
                         if file.lower().endswith('.md'):
                             md_files.append(os.path.join(root, file))
                 
-                if len(md_files) < 1:
-                    shutil.rmtree(test_dir)  # Clean up
-                    flash('There is no MD file in the zip folder', 'danger')
-                    return redirect(url_for('admin_create_test'))
-                elif len(md_files) > 1:
-                    shutil.rmtree(test_dir)  # Clean up
-                    flash('There are multiple MD files in the zip folder', 'danger')
-                    return redirect(url_for('admin_create_test'))
+                log_debug(f"Found MD files after extraction: {md_files}")
 
-                # Get the path of the markdown file
-                md_file_path = md_files[0]
-                
-                # If the markdown file is not already named questions.md
-                if os.path.basename(md_file_path).lower() != 'questions.md':
-                    # Check if questions.md already exists (shouldn't happen due to previous check)
-                    questions_md_path = os.path.join(test_dir, 'questions.md')
-                    if os.path.exists(questions_md_path):
-                        os.remove(questions_md_path)
-                    # Rename the markdown file to questions.md
-                    os.rename(md_file_path, questions_md_path)
-                
-            # Debug information
-            print(f"Current user: {current_user}")
-            print(f"Current user ID: {current_user.id}")
-            print(f"Is authenticated: {current_user.is_authenticated}")
+                if not md_files:
+                    flash('No Markdown (.md) file found in the uploaded ZIP archive.', 'danger')
+                    log_error("No MD file found in ZIP archive.")
+                    # Cleanup is handled by the broader except block
+                    raise ValueError("No MD file in ZIP") # Trigger cleanup
+                elif len(md_files) > 1:
+                    flash('Multiple Markdown (.md) files found in the ZIP archive. Please ensure only one is present.', 'danger')
+                    log_error("Multiple MD files found in ZIP archive.")
+                    raise ValueError("Multiple MD files in ZIP") # Trigger cleanup
+
+                extracted_md_path = md_files[0]
+                target_md_path = os.path.join(test_dir, 'questions.md')
+
+                if extracted_md_path.lower() != target_md_path.lower():
+                    log_info(f"Renaming extracted MD file '{extracted_md_path}' to '{target_md_path}'")
+                    if os.path.exists(target_md_path):
+                         # This case should ideally not be hit if temp_zip_path is unique enough
+                         # or if the ZIP doesn't contain 'questions.md' directly when another .md is also present.
+                        log_warn(f"Target file '{target_md_path}' already exists. Overwriting.")
+                        os.remove(target_md_path) 
+                    os.rename(extracted_md_path, target_md_path)
+                    log_info("Successfully renamed MD file.")
+            
+            # Debug information - these are fine as debug
+            log_debug(f"Current user for test creation: {current_user}")
+            log_debug(f"Current user ID for test creation: {current_user.id}")
+            log_debug(f"Is authenticated for test creation: {current_user.is_authenticated}")
             
             # Create new test in database
-            test = Test(
+            new_test = Test(
                 test_id=test_id,
                 subject=subject,
-                foldername= test_dir,
-                filename= 'questions.md',   # All tests will have questions.md in their directory
+                foldername=test_dir, # Storing the absolute path or path relative to app.config['UPLOAD_FOLDER']
+                filename='questions.md',
                 time_limit=time_limit,
                 created_at=datetime.utcnow(),
-                created_by=current_user.id  # Use the current user's ID
+                created_by=current_user.id
             )
             
-            # Debug the test object before committing
-            print(f"Test object before commit: {test}")
-            print(f"Test created_by before commit: {test.created_by}")
-            db.session.add(test)
+            log_debug(f"Test object before commit: {new_test}")
+            db.session.add(new_test)
             db.session.commit()
+            log_info(f"Successfully committed new test {test_id} to database.")
             
             flash('Test created successfully!', 'success')
             return redirect(url_for('admin_tests'))
-            
-        except Exception as e:
-            # Clean up test directory if it was created
-            if 'test_dir' in locals() and os.path.exists(test_dir):
-                shutil.rmtree(test_dir, ignore_errors=True)
-            if 'test' in locals():
-                db.session.rollback()
-            flash(f'An error occurred: {str(e)}', 'danger')
-            return redirect(url_for('admin_create_test'))
-            
+
+        except (IOError, OSError) as e:
+            log_error(f"File system error during test creation for {test_id}: {e}", exc_info=True)
+            flash(f'A file system error occurred: {e.strerror}. Please check logs and permissions.', 'danger')
+            db.session.rollback() # Rollback if any DB operation was attempted before this error
+        except zipfile.BadZipFile as e:
+            log_error(f"Bad ZIP file uploaded for test {test_id}: {e}", exc_info=True)
+            flash('The uploaded ZIP file is invalid or corrupted. Please upload a valid ZIP file.', 'danger')
+            db.session.rollback()
+        except FileNotFoundError as e: # Should be caught by IOError/OSError but good for explicitness if direct calls are made
+            log_error(f"File not found during test creation for {test_id}: {e}", exc_info=True)
+            flash(f'A required file was not found: {e.filename}. Please try again.', 'danger')
+            db.session.rollback()
+        except ValueError as e: # For custom errors like "No MD file in ZIP"
+            log_error(f"Validation error during test creation for {test_id}: {str(e)}", exc_info=True)
+            # The flash message is already set for these specific ValueErrors
+            if not any(m.category == 'danger' for m in get_flashed_messages(with_categories=True)): # Avoid double flashing
+                flash(str(e), 'danger')
+            db.session.rollback()
+        except Exception as e: # General fallback
+            log_error(f"An unexpected error occurred during test creation for {test_id}: {e}", exc_info=True)
+            flash('An unexpected error occurred. Please check the logs and try again.', 'danger')
+            db.session.rollback() # Ensure rollback for any other error
+        finally:
+            # Cleanup: if test_dir was created but test creation failed (e.g. DB error or other exception)
+            # Check if 'new_test' was committed. If not, and dir exists, remove it.
+            # This logic needs to be careful. If commit succeeded but redirect failed, we don't want to delete.
+            # A simple way: if an exception occurred AND the directory exists, clean up.
+            # The 'except' blocks above now handle rollback.
+            # If an error occurred and test_dir is set and exists:
+            if test_dir and os.path.exists(test_dir) and 'new_test' in locals() and not db.session.object_session(new_test):
+                # This condition means new_test was not successfully committed or added to session for commit
+                # Or more simply, if any exception occurred and test_dir exists, and we are about to redirect to create_test again
+                # For now, the existing shutil.rmtree in the broad exception is fine if specific ones also trigger it.
+                # Let's refine: if an exception occurred, and 'test_dir' exists, attempt cleanup
+                # The 'new_test.id is None' check implies it wasn't committed.
+                if 'e' in locals() and test_dir and os.path.exists(test_dir):
+                     # Check if the test was actually committed by trying to fetch it
+                    test_committed = Test.query.filter_by(test_id=test_id).first()
+                    if not test_committed:
+                        log_info(f"Cleaning up directory {test_dir} due to error in test creation.")
+                        shutil.rmtree(test_dir, ignore_errors=True) # ignore_errors is fine for cleanup
+                    else:
+                        log_info(f"Directory {test_dir} not cleaned up as test was found in DB (possibly error after commit).")
+            # This redirect should only happen if an error was caught and not handled by returning redirect elsewhere
+            if 'e' in locals(): # If any exception was caught
+                 return redirect(url_for('admin_create_test'))
+
     return render_template('admin_create_test.html')
 
 @app.route('/admin/tests/delete/<int:test_id>', methods=['POST'])
 @login_required
-@log_exceptions
+@log_exceptions # This decorator already logs exceptions generally
 def admin_delete_test(test_id):
     if current_user.role != 'admin':
         abort(403)
     test = Test.query.get_or_404(test_id)
-    # Optionally delete the uploaded file
+    
+    archive_folder_path = os.path.join(app.config['UPLOAD_FOLDER'], 'archive')
+    if not os.path.exists(archive_folder_path):
+        try:
+            os.makedirs(archive_folder_path)
+            log_info(f"Created archive folder: {archive_folder_path}")
+        except (IOError, OSError) as e:
+            log_error(f"Could not create archive folder {archive_folder_path}: {e}", exc_info=True)
+            flash(f"Warning: Could not create archive folder. Test folder {test.foldername} may not be archived.", "warning")
+            # Proceed with deletion even if archive folder creation fails
+
+    if os.path.exists(test.foldername): # Check if folder exists before trying to move
+        try:
+            log_info(f"Attempting to archive test folder {test.foldername} to {archive_folder_path}")
+            shutil.move(test.foldername, archive_folder_path)
+            log_info(f"Successfully archived test folder {test.foldername}")
+        except (IOError, OSError) as e:
+            log_error(f"Failed to archive test folder {test.foldername}: {e}", exc_info=True)
+            flash(f"Warning: Failed to archive test folder {test.foldername}. It may need manual cleanup. The test will still be deleted from the database.", "warning")
+        except Exception as e: # Catch any other exception during move
+            log_error(f"An unexpected error occurred while archiving {test.foldername}: {e}", exc_info=True)
+            flash(f"Warning: An unexpected error occurred while archiving test folder {test.foldername}. The test will still be deleted.", "warning")
+    else:
+        log_warn(f"Test folder {test.foldername} not found for archiving. Proceeding with DB deletion.")
+
     try:
-        archive_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'archive')
-        if not os.path.exists(archive_folder):
-            os.makedirs(archive_folder)
-        shutil.move(test.foldername, archive_folder)
-    except Exception:
-        pass
-    db.session.delete(test)
-    db.session.commit()
-    flash('Test deleted.', 'success')
+        db.session.delete(test)
+        db.session.commit()
+        log_info(f"Successfully deleted test {test.test_id} from database.")
+        flash('Test deleted successfully. Associated folder has been archived (if found and possible).', 'success')
+    except Exception as e:
+        log_error(f"Error deleting test {test.test_id} from database: {e}", exc_info=True)
+        db.session.rollback()
+        flash('Error deleting test from database. Please check logs.', 'danger')
+
+    return redirect(url_for('admin_tests'))
     return redirect(url_for('admin_tests'))
 
 
@@ -611,13 +788,14 @@ def student_start_test(test_id):
         abort(403)
     test = Test.query.filter_by(test_id=test_id).first_or_404()
     
-    # Read and parse the markdown file
-    for dirpath, dirnames, filenames in os.walk(test.foldername):
-        if test.filename in filenames:
-            file_path = os.path.join(dirpath, test.filename)
-            upload_dir = dirpath
+    file_path = get_question_file_path(test.foldername, test.filename)
 
-    print(f"directory path = {dirpath}")
+    if not file_path:
+        log_error(f"Question file not found for test ID {test.test_id} in folder {test.foldername}")
+        flash(f'Error loading test: Question file not found for test {test.test_id}.', 'danger')
+        return redirect(url_for('student_tests'))
+
+    log_debug(f"Found question file at: {file_path}")
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             content = f.read()
@@ -633,7 +811,7 @@ def student_start_test(test_id):
                              time_limit=test.time_limit)
     except Exception as e:
         flash(f'Error loading test: {str(e)}', 'error')
-        print(f"Error loading test: {str(e)}")
+        log_error(f"Error loading test: {str(e)}")
         return redirect(url_for('student_tests'))
 
 @app.route('/student/test/<test_id>/jee', methods=['GET', 'POST'])
@@ -646,20 +824,26 @@ def student_jee_test(test_id):
     
     # Get questions from session or load from file
     if 'test_questions' not in session or session.get('test_id') != test_id:
-        for dirpath, dirnames, filenames in os.walk(test.foldername):
-            if test.filename in filenames:
-                file_path = os.path.join(dirpath, test.filename)
+        file_path = get_question_file_path(test.foldername, test.filename)
+        if not file_path:
+            log_error(f"Question file not found for test ID {test.test_id} in folder {test.foldername} (student_jee_test).")
+            flash(f'Error loading test: Question file not found for test {test.test_id}.', 'danger')
+            return redirect(url_for('student_tests'))
+        
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             questions = parse_markdown_questions(content)
             session['test_questions'] = questions
             session['test_id'] = test_id
+            log_debug(f"Loaded questions from file for test {test_id}")
         except Exception as e:
-            flash(f'Error loading test: {str(e)}', 'error')
+            log_error(f"Error loading test questions from file '{file_path}': {str(e)}")
+            flash(f'Error loading test: {str(e)}', 'danger')
             return redirect(url_for('student_tests'))
     else:
         questions = session['test_questions']
+        log_debug(f"Loaded questions from session for test {test_id}")
     
     num_questions = len(questions)
     
@@ -768,20 +952,21 @@ def student_test_result(test_id, response_id):
     
     # Get questions from the test file
     questions = []
-    file_path = None
-    for dirpath, dirnames, filenames in os.walk(test.foldername):
-        if test.filename in filenames:
-            file_path = os.path.join(dirpath, test.filename)
-            break
+    file_path = get_question_file_path(test.foldername, test.filename)
     
-    if file_path and os.path.exists(file_path):
+    if file_path:
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                questions = parse_markdown_questions(content)
+            questions = parse_markdown_questions(content)
         except Exception as e:
-            print(f"Error loading questions: {e}")
-    
+            log_error(f"Error loading questions from file '{file_path}' for test result: {e}")
+            # Not flashing here as it's a results page, but logging the error.
+            # The page will show "no questions" or an empty list.
+    else:
+        log_error(f"Question file not found for test ID {test.id} in folder {test.foldername} (student_test_result).")
+        # questions list remains empty
+
     # Format time taken
     time_taken = str(timedelta(seconds=response.time_taken))
     
@@ -817,12 +1002,17 @@ def create_app():
 
 
 if __name__ == '__main__':
-    with app.app_context():
-        db.create_all()
+    # The db.create_all() call has been removed from here.
+    # Database initialization should be handled by Flask-Migrate (flask db upgrade)
+    # or by running the init_db.py script.
     
     try:
-        app = create_app()
+        # app = create_app() # create_app() is already called before this block
         app.run(debug=True, host='0.0.0.0', port=5000)
     except Exception as e:
-        app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
-        raise 
+        # Use the already configured app.logger if available, otherwise default to log_error
+        if hasattr(app, 'logger') and app.logger:
+            app.logger.error(f'Error starting application: {str(e)}', exc_info=True)
+        else:
+            log_error(f'Error starting application: {str(e)}', exc_info=True)
+        raise
